@@ -3,7 +3,7 @@
 This is an experimental implementation of a runtime monitor for self-driving cars that verifies aspects of perception in both LiDAR and vision. In each example, a controller passes a certificate to the monitor, which uses the certificate to either confirm or deny the safety of the situation. 
 
 ### LiDAR
-The controller filters small particles from the LiDAR point cloud and generates a certificate containing points that are far enough from the source to ensure no collisions will happen in the near future. 
+The controller filters snow particles from the LiDAR point cloud and generates a certificate containing points that are far enough from the source to ensure no collisions will happen in the near future. 
 
 The monitor checks that the LiDAR points in the certificate satisfy two conditions: sufficient spread and sufficient density. To achieve sufficient spread, certificate must span the size of one lane in front of the car, both vertically and horizontally. 
 
