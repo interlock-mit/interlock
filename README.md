@@ -5,10 +5,10 @@ This is an experimental implementation of a runtime monitor for self-driving car
 ### LiDAR
 The controller filters snow particles from the LiDAR point cloud and generates a certificate containing points that are far enough from the source to ensure no collisions will happen in the near future. 
 
-The monitor checks that the LiDAR points in the certificate satisfy two conditions: sufficient spread and sufficient density. To achieve sufficient spread, certificate must span the size of one lane in front of the car, both vertically and horizontally. 
+The monitor checks that the LiDAR points in the certificate satisfy two conditions: sufficient spread and sufficient density. To achieve sufficient spread, the certificate must span the size of one lane in front of the car, both vertically and horizontally. To achieve sufficient density, the certificate must contain points from enough LiDAR scan rows, and must have no horizontal gaps of a size greater than a pre-specified parameter.
 
 ### Vision + LiDAR
-The controller takes points from the camera image's lane lines and computes the LiDAR points that correspond to those pixels. It generates a certificate containing those points and the ground plane (computed from the LiDAR point cloud).
+The controller takes pixels from the camera image's lane lines and computes the LiDAR points that correspond to them. It generates a certificate containing those points and the ground plane (computed from the LiDAR point cloud).
 
 The monitor checks that the LiDAR points corresponding to lane line points are on the ground plane. 
 
