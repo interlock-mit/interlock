@@ -27,15 +27,13 @@ def rad(deg):
     return deg*math.pi/180
 
 im_theta_y = rad(16)
-im_theta_x = rad(33) # degrees
-lidar_theta_x = rad(180) # degrees
-lidar_theta_y = rad(15) # degrees
+im_theta_x = rad(33)
+lidar_theta_x = rad(180)
+lidar_theta_y = rad(15)
 LIDAR_ANGLE_SPANS = (lidar_theta_x, lidar_theta_y)
 
 def pt_to_lidar_angle(im_point, im_dims):
     """
-    TODO
-
     im_point : (x, y) where x is the number of pixels to the
                 right of the image's top left, y is the number
                 of pixels from the image's top--(0,0) is TL corner
@@ -45,7 +43,6 @@ def pt_to_lidar_angle(im_point, im_dims):
     width, height = im_dims
 
     def get_angle(half_dim, pt, im_angle):
-        """TODO"""
         dim_ratio = float(pt - half_dim)/half_dim
         return math.atan2(dim_ratio * math.tan(im_angle), 1)
 

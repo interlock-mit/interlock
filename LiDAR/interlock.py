@@ -17,13 +17,10 @@ max_xpt_separation = 0.01 # horizontally within every max_xpt_separation meters,
 
 ################################################################################
 
-def distance(pt, pt2=(0,0,0), horz=False):
-    """Distance of a 3D point from another 3D point, or the origin.
-    If `horz`, returns the 2D distance ignoring the z coordinate"""
+def distance(pt, pt2=(0,0,0)):
+    """Distance of a 3D point from another 3D point, or the origin"""
     x, y, z = pt
     x2, y2, z2 = pt2
-    if horz:
-        return ((x-x2)**2 + (y-y2)**2)**0.5
     return ((x-x2)**2 + (y-y2)**2 + (z-z2)**2)**0.5
 
 ################################################################################
@@ -74,7 +71,7 @@ def interlock(certificate):
             if pt1[0] < lane_left or pt2[0] > lane_right: 
                 # outside the lane
                 continue
-            if distance(pt1, pt2, horz=True) > max_xpt_separation:
+            if abs(pt1[0]-pt2[0]) > max_xpt_separation:
                 return False
 
     return True

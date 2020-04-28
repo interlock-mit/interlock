@@ -26,13 +26,10 @@ class Certificate:
         self.points = points # np.ndarray of 3D points (shape ix3)
 
 
-def distance(pt, pt2=(0,0,0), horz=False):
-    """Distance of a 3D point from another 3D point, or the origin.
-    If `horz`, returns the 2D distance ignoring the z coordinate"""
+def distance(pt, pt2=(0,0,0)):
+    """Distance of a 3D point from another 3D point, or the origin"""
     x, y, z = pt
     x2, y2, z2 = pt2
-    if horz:
-        return ((x-x2)**2 + (y-y2)**2)**0.5
     return ((x-x2)**2 + (y-y2)**2 + (z-z2)**2)**0.5
 
 ################################################################################
