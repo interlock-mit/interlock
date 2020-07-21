@@ -60,7 +60,7 @@ import os
 import sys
 
 try:
-    sys.path.append(glob.glob('../carla/dist/carla-*%d.%d-%s.egg' % (
+    sys.path.append(glob.glob('/home/interlock/PythonAPI/carla/dist/carla-*%d.%d-%s.egg' % (
         sys.version_info.major,
         sys.version_info.minor,
         'win-amd64' if os.name == 'nt' else 'linux-x86_64'))[0])
@@ -88,7 +88,6 @@ import weakref
 from matplotlib import pyplot as plt
 from matplotlib.animation import FuncAnimation
 from mpl_toolkits.mplot3d import Axes3D
-import socket
 
 try:
     import pygame
@@ -894,25 +893,25 @@ class RadarSensor(object):
 # ==============================================================================
 # -- Matplotlib ----------------------------------------------------------------
 # ==============================================================================
-fig = plt.figure()
-ax = fig.add_subplot(111, projection='3d')
-ax.set_xlabel('x-axis')
-ax.set_ylabel('y-axis')
-ax.set_zlabel('z-axis')
-glob_points = np.zeros((12, 3))  # will be used to store lidar data and access
-
-def update_scatter(i):
-    global glob_points
-    
-    x_vals = glob_points[:,0]
-    y_vals = glob_points[:,1]
-    z_vals = glob_points[:,2]
-    plt.pause(0.001)
-    ax.scatter(x_vals, y_vals, z_vals, c='b', marker='.')
-
-ani = FuncAnimation(fig, update_scatter, interval=100) # which figure we are updating, which function does the updating, interval bt updates
-plt.tight_layout()
-plt.show(block=False)
+#fig = plt.figure()
+#ax = fig.add_subplot(111, projection='3d')
+#ax.set_xlabel('x-axis')
+#ax.set_ylabel('y-axis')
+#ax.set_zlabel('z-axis')
+#glob_points = np.zeros((12, 3))  # will be used to store lidar data and access
+#
+#def update_scatter(i):
+#    global glob_points
+#    
+#    x_vals = glob_points[:,0]
+#    y_vals = glob_points[:,1]
+#    z_vals = glob_points[:,2]
+#    plt.pause(0.001)
+#    ax.scatter(x_vals, y_vals, z_vals, c='b', marker='.')
+#
+#ani = FuncAnimation(fig, update_scatter, interval=100) # which figure we are updating, which function does the updating, interval bt updates
+#plt.tight_layout()
+#plt.show(block=False)
 
 # ==============================================================================
 # -- CameraManager -------------------------------------------------------------
@@ -1010,7 +1009,7 @@ class CameraManager(object):
         if not self:
             return
         if self.sensors[self.index][0].startswith('sensor.lidar'):
-            image.save_to_disk(path='/opt/carla-simulator/interlock/carla/{}.ply'.format(image.frame))
+            image.save_to_disk(path='lidar_outputs/{}.ply'.format(image.frame)) # stores the point cloud as a .ply file that can be opened in external applications like Meshlab
             points = np.frombuffer(image.raw_data, dtype=np.dtype('f4'))
             points = np.reshape(points, (int(points.shape[0] / 3), 3))
 
