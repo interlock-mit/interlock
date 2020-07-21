@@ -88,6 +88,7 @@ import weakref
 from matplotlib import pyplot as plt
 from matplotlib.animation import FuncAnimation
 from mpl_toolkits.mplot3d import Axes3D
+import socket
 
 try:
     import pygame
@@ -150,29 +151,18 @@ def find_weather_presets():
 def get_actor_display_name(actor, truncate=250):
     name = ' '.join(actor.type_id.replace('_', '.').title().split('.')[1:])
     return (name[:truncate - 1] + u'\u2026') if len(name) > truncate else name
+# Socket stuff for sending data; put on halt for now since likely too slow
+#TCP_IP = '127.0.0.1'
+#TCP_PORT = 5005
+#BUFFER_SIZE = 1024
+#MESSAGE = b"Hello, World!"
+#s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+#s.connect((TCP_IP, TCP_PORT))
+#s.send(MESSAGE)
+#data = s.recv(BUFFER_SIZE)
+#s.close()
+#print("received data:{}".format(data))
 
-#fig = plt.figure()
-#ax = fig.add_subplot(111, projection='3d')
-#x_vals = []
-#y_vals = []
-#z_vals = []
-#ax.set_xlabel('x-axis')
-#ax.set_ylabel('y-axis')
-#ax.set_zlabel('z-axis')
-#
-#sorted_points = np.empty([3,3]) # will be used to store lidar data, needs to be global
-#
-#def update_scatter(i):
-#    """ :param points: np array of the lidar points, should be in form [[x1, y1, z1, dis1]...[xn, yn, zn, disn]]
-#    used to update the scatter plot figure with newest lidar points"""
-#    x_vals = sorted_points[:,0]
-#    y_vals = sorted_points[:,1]
-#    z_vals = sorted_points[:,2]
-#    scat = ax.scatter(x_vals, y_vals, z_vals, c='b', marker='.')
-#
-#ani = FuncAnimation(plt.gcf(), update_scatter, interval=1000)
-#plt.tight_layout()
-#plt.show(block=False)
 
 # ==============================================================================
 # -- World ---------------------------------------------------------------------
@@ -1020,11 +1010,12 @@ class CameraManager(object):
         if not self:
             return
         if self.sensors[self.index][0].startswith('sensor.lidar'):
+            image.save_to_disk(path='/opt/carla-simulator/interlock/carla/{}.ply'.format(image.frame))
             points = np.frombuffer(image.raw_data, dtype=np.dtype('f4'))
             points = np.reshape(points, (int(points.shape[0] / 3), 3))
-            global glob_points
-            glob_points = np.copy(points)
-            # plt.show(block=False)
+
+            #global glob_points
+            #glob_points = np.copy(points)
            # print('IN FUNC: {}'.format(glob_points))
            # get lidar sensor position so we can sort by each point's distance from the lidar
            # world = self._parent.get_world()
