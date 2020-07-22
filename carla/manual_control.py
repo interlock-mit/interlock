@@ -85,9 +85,6 @@ import math
 import random
 import re
 import weakref
-from matplotlib import pyplot as plt
-from matplotlib.animation import FuncAnimation
-from mpl_toolkits.mplot3d import Axes3D
 
 try:
     import pygame
@@ -150,18 +147,6 @@ def find_weather_presets():
 def get_actor_display_name(actor, truncate=250):
     name = ' '.join(actor.type_id.replace('_', '.').title().split('.')[1:])
     return (name[:truncate - 1] + u'\u2026') if len(name) > truncate else name
-# Socket stuff for sending data; put on halt for now since likely too slow
-#TCP_IP = '127.0.0.1'
-#TCP_PORT = 5005
-#BUFFER_SIZE = 1024
-#MESSAGE = b"Hello, World!"
-#s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-#s.connect((TCP_IP, TCP_PORT))
-#s.send(MESSAGE)
-#data = s.recv(BUFFER_SIZE)
-#s.close()
-#print("received data:{}".format(data))
-
 
 # ==============================================================================
 # -- World ---------------------------------------------------------------------
@@ -890,28 +875,6 @@ class RadarSensor(object):
                 life_time=0.06,
                 persistent_lines=False,
                 color=carla.Color(r, g, b))
-# ==============================================================================
-# -- Matplotlib ----------------------------------------------------------------
-# ==============================================================================
-#fig = plt.figure()
-#ax = fig.add_subplot(111, projection='3d')
-#ax.set_xlabel('x-axis')
-#ax.set_ylabel('y-axis')
-#ax.set_zlabel('z-axis')
-#glob_points = np.zeros((12, 3))  # will be used to store lidar data and access
-#
-#def update_scatter(i):
-#    global glob_points
-#    
-#    x_vals = glob_points[:,0]
-#    y_vals = glob_points[:,1]
-#    z_vals = glob_points[:,2]
-#    plt.pause(0.001)
-#    ax.scatter(x_vals, y_vals, z_vals, c='b', marker='.')
-#
-#ani = FuncAnimation(fig, update_scatter, interval=100) # which figure we are updating, which function does the updating, interval bt updates
-#plt.tight_layout()
-#plt.show(block=False)
 
 # ==============================================================================
 # -- CameraManager -------------------------------------------------------------
@@ -1009,38 +972,9 @@ class CameraManager(object):
         if not self:
             return
         if self.sensors[self.index][0].startswith('sensor.lidar'):
-            image.save_to_disk(path='lidar_outputs/{}.ply'.format(image.frame)) # stores the point cloud as a .ply file that can be opened in external applications like Meshlab
             points = np.frombuffer(image.raw_data, dtype=np.dtype('f4'))
             points = np.reshape(points, (int(points.shape[0] / 3), 3))
 
-            #global glob_points
-            #glob_points = np.copy(points)
-           # print('IN FUNC: {}'.format(glob_points))
-           # get lidar sensor position so we can sort by each point's distance from the lidar
-           # world = self._parent.get_world()
-           # actor_list = world.get_actors()
-           # id_ = None
-           # for actor in actor_list:  # find the spawned lidar
-           #     if actor.type_id.startswith('sensor.lidar'):
-           #         id_ = actor.id
-           #         lidar_actor = world.get_actor(id_)
-           #         break
-           # if id_ is not None:
-           #     cam_loc = lidar_actor.get_location()
-           #     lidar_pos = np.array([cam_loc.x, cam_loc.y, cam_loc.z])
-           # 
-           # # add distance component and organize points
-           # point_cpy = np.copy(points)  # copy points array to avoid aliasing 
-           # dist_arr = np.empty((np.shape(point_cpy)[0],1)) # array to store distances before combining
-           # for row_index in range(np.shape(point_cpy)[0]): 
-           #     row = point_cpy[row_index]
-           #     dis = np.linalg.norm(row-lidar_pos)
-           #     dist_arr[row_index] = dis
-           # global sorted_points
-           # sorted_points = np.hstack((point_cpy, dist_arr))
-           # sorted_points = sorted_points[np.argsort(sorted_points[:,3])]
-           # print("SORTED: {}".format(sorted_points))
-           # print()
             # pygame point processing 
             lidar_data = np.array(points[:, :2])
             lidar_data *= min(self.hud.dim) / 100.0
