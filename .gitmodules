@@ -1,3 +1,3 @@
 [submodule "carla/carlaviz"]
 	path = carla/carlaviz
-	url = git@github.com:carla-simulator/carlaviz.git
+	url = git@github.com:wx9698/carlaviz.git

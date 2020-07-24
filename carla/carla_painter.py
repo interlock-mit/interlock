@@ -1,1 +1,0 @@
-carlaviz/examples/carla_painter.py
