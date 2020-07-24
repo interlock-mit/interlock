@@ -2,6 +2,10 @@
 
 This is an experimental implementation of a runtime monitor for self-driving cars that verifies aspects of perception in both LiDAR and vision. In each example, a controller passes a certificate to the monitor, which uses the certificate to either confirm or deny the safety of the situation. 
 
+### Running Carla
+
+To run a script inside the Carla directory, do the following from the top level interlock/ directory: `python3 -m carla.<script_name>` Note the missing `.py`. This allows scripts in the Carla directory to import the checkers without having to edit the path variable.
+
 ### LiDAR
 The controller filters snow particles from the LiDAR point cloud and generates a certificate containing points that are far enough from the source to ensure no collisions will happen in the near future. 
 
