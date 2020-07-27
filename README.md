@@ -4,7 +4,7 @@ This is an experimental implementation of a runtime monitor for self-driving car
 
 ### Running Carla
 
-To run a script inside the Carla directory, do the following from the top level interlock/ directory: `python3 -m carla-scripts.<script_name>` Note the missing `.py`. This allows scripts in the Carla directory to import the checkers without having to edit the path variable.
+To run a script inside the Carla directory, do the following from the top level interlock/ directory: `python3 -m carla_scripts.<script_name>` Note the missing `.py`. This allows scripts in the Carla directory to import the checkers without having to edit the path variable.
 
 ### LiDAR
 The controller filters snow particles from the LiDAR point cloud and generates a certificate containing points that are far enough from the source to ensure no collisions will happen in the near future. 
