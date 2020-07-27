@@ -17,63 +17,123 @@ class Lidarcamera:
        self.point_idx = 0
        self.print_once = False
 
-    def angle(self, pt):
-        return math.atan2(pt[1], pt[0])
+    def angle(self, pt, origin=0):
+        if isinstance(pt, carla.Vector3D):
+            return math.atan2(pt.y, pt.x)
+        else:
+            return math.atan2(pt[1], pt[0])
+
 
     def camera_listener(self, data):
         pass
 
     def lidar_listener(self, data):
         n = data.channels
-        counts = []
+        # the raw data contains info on the number of points per channel,
+        # and points are ordered based on channel, so we can calculate the
+        # ending indicies for all channels
+        counts = [0]
         for i in range(n):
-            if i == 0:
-                counts.append(data.get_point_count(i))
-            else:
-                counts.append(counts[i-1] + data.get_point_count(i))
+            counts.append(counts[i] + data.get_point_count(i))
 
+        # massage the points into the right shape
         points = np.frombuffer(data.raw_data, dtype=np.dtype('f4'))
         points = np.array(np.reshape(points, (int(points.shape[0] / 3),3)))
+
+        # some weird transformations have to happen for the visualizer:
+        # flip the x and y coords 
         points[:,[0,1]] = points[:,[1,0]]
-        loc = self.lidar.get_location()
-        #loc = self.ego_vehicle.get_location()
+
+        # mirror the y and z coords
         points[:,1] *= -1
         points[:,2] *= -1
 
+        # calculate the angle of each point, so that we can make sure they're
+        # ordered correctly
+        points = np.hstack((points, np.arctan2(points[:,1], points[:,0]).reshape(points.shape[0], 1)))
+
+        # translate to the lidar unit's location
+        loc = self.lidar.get_location()
         points[:,0] += loc.x
         points[:,1] += loc.y
         points[:,2] += loc.z
-        points = points.tolist()
+
+        #TODO
+        # right now the angles are in world coordinates centered about the 
+        # lidar, we need to make the angles relative to the car's orientation
+
+
+        # instantiate the points dict
         if self.points is None:
-            self.points = {i:[] for i in range(n)}
+            self.points = {i:None for i in range(n)}
+
+        # place the data by row into the points dict, using the indicies we
+        # calculated earlier
         for i in range(n):
-            if i == 0:
-                self.points[i]+=points[0:counts[i]]
+            if self.points[i] is None:
+                self.points[i] = points[counts[i]:counts[i+1]].copy()
             else:
-                self.points[i]+=points[counts[i-1]:counts[i]]
+                self.points[i] = np.vstack((self.points[i], points[counts[i]:counts[i+1]]))
+
+        # the lidar does not complete a full rotation every tick, so we keep
+        # track of the scanned angle to know when it has finished one rotation
         self.scanned_angle += data.horizontal_angle
         if self.scanned_angle >= 2*math.pi:
-            #self.painter.draw_points(self.points[self.point_idx%n])
-            lines = self.points[self.point_idx%n]
+            # calc angles and append
+
+            # calc the forward angle of the car, then find the opposite of it
+            # so that we know which angle the lidar scans should start at
+            forward_vec = self.ego_vehicle.get_transform().get_forward_vector()
+            forward_angle = self.angle(forward_vec)
+            # rotate 180 degrees
+            back_angle = forward_angle + np.pi
+            if back_angle > np.pi:
+                back_angle = -2*np.pi + back_angle
+            elif back_angle < -np.pi:
+                back_angle = 2*np.pi + back_angle
+            print("back_angle", back_angle)
+
+            for i in self.points:
+                # sort each row by angle
+                self.points[i] = self.points[i][np.argsort(self.points[i][:,3])]
+                # now re-order the array so that the points start at the back
+                # of the car and go around the front, from left to right
+
+                # the first point in the array at this point in the code should
+                # be at angle -pi. so, find the index at which we'd find the
+                # back of the car
+                num_pts = self.points[i].shape[0]
+                rad_per_pt = 2*np.pi / num_pts
+                back_index = abs(int((back_angle+np.pi) / rad_per_pt))
+                indicies = np.array([(j+back_index) % num_pts for j in range(num_pts)])
+                print(indicies)
+                self.points[i] = self.points[i][indicies,:]
+                
+
+            self.painter.draw_points([self.points[31][:,:3].tolist()[self.point_idx%len(self.points[31])]])
+            #self.painter.draw_polylines(self.points[31][:,:3].tolist(), width=.01)
+
+            #self.painter.draw_points(self.points[31][:,:3].tolist())
+
+            #print()
+            #print(self.angle(self.points[31][0]))
+            #print(self.angle(self.points[31][1]))
+            #print(self.angle(self.points[31][2]))
+            #print(self.angle(self.ego_vehicle.get_transform().get_forward_vector()))
+            #print()
+            #lines = self.points[self.point_idx%n]
             #for i in range(len(lines)):
             #    lines[i] = [lines[i], lines[i]]
             #self.painter.draw_points(lines)
             self.point_idx += 1
             self.scanned_angle = 0
             #if not self.print_once:
-            self.painter.draw_polylines([points[0]], width=0.25)
+            #self.painter.draw_polylines([points[0]], width=0.25)
                 #self.print_once = True
                 #for i in range(len(self.points[0])):
                 #    print(self.angle(self.points[0][i]))
 
             self.points = None
-        #origin = [ego_location.x, ego_location.y, ego_location.z + 10.0]
-        #pts = []
-        #for i in range(50):
-        #    pts.append([origin[0]+random.random()*10,
-        #            origin[1]+random.random()*10,
-        #            origin[2]+random.random()*10])
-        #painter.draw_points(pts)
 
 
     def spawn_obstacle(self, index=0, dist=10):
@@ -139,16 +199,13 @@ class Lidarcamera:
             self.camera.listen(lambda data: self.camera_listener(data))
 
             blueprint_lidar = self.world.get_blueprint_library().find('sensor.lidar.ray_cast')
-            blueprint_lidar.set_attribute('range', '30')
+            # these specs follow the velodyne vlp32 spec
+            blueprint_lidar.set_attribute('range', '200')
             blueprint_lidar.set_attribute('rotation_frequency', '10')
             blueprint_lidar.set_attribute('channels', '32')
             blueprint_lidar.set_attribute('lower_fov', '-25')
             blueprint_lidar.set_attribute('upper_fov', '15')
-            #blueprint_lidar.set_attribute('points_per_second', '56000')
             blueprint_lidar.set_attribute('points_per_second', '578560')
-            #blueprint_lidar.set_attribute('dropoff_general_rate', '0.0')
-            #blueprint_lidar.set_attribute('dropoff_intensity_limit', '0.0')
-            #blueprint_lidar.set_attribute('dropoff_zero_intensity', '0.0')
             transform_lidar = carla.Transform(carla.Location(x=0.0, z=1.8))
             self.lidar = self.world.spawn_actor(blueprint_lidar, transform_lidar, attach_to=self.ego_vehicle)
             self.lidar.listen(lambda data: self.lidar_listener(data))
