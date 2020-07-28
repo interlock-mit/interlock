@@ -28,7 +28,7 @@ from carla import VehicleLightState as vls
 import argparse
 import logging
 import random
-
+import json
 
 def main():
     argparser = argparse.ArgumentParser(
@@ -136,10 +136,8 @@ def main():
         print('Reference https://carla.readthedocs.io/en/latest/bp_library/ to see what actors you can spawn!')
         print('Rotations: Roll = Degrees around x-axis, Pitch = Degrees around y-axis, Yaw = Degrees around z-axis')
         print()
-
         print_bps = input('Do you want to view all the blueprints [y/n]? ')
         if print_bps.lower() == 'y' or print_bps.lower() == 'yes':
-            blueprints = [(num + 1, 'hue') for num in range(50)]
             print_atts = input('Print each blueprints attributes too [y/n]? ')
             blueprints = [bp for bp in world.get_blueprint_library().filter('*')]
             for blueprint in blueprints:
@@ -149,25 +147,67 @@ def main():
                         print('  - {}'.format(attr))
             print()
 
-        N = int(input('How many actors would you like to spawn? '))
+
+
+        print()
+
+        load_preset = input('Load saved preset(s) [y/n]? ')
+        if load_preset.lower() == 'y' or load_preset.lower() == 'yes':
+            load_n = int(input('How many presets to load? '))
+            for load_num in range(load_n):
+                save_name = input('The name of preset '+str(load_num + 1)+' to load(ie. uber_crash or tesla_crash)? ')
+                with open('saves.json', 'r+') as fp:
+                    saves = json.load(fp)
+                    preset = saves[save_name]
+                    this_bp = world.get_blueprint_library().filter(preset['name_tag'])[0]
+                    bp_spawn = carla.Transform(carla.Location(x=preset['x'], y=preset['y'], z=preset['z']), carla.Rotation(pitch=preset['pitch'], yaw=preset['yaw'], roll=preset['roll']))
+                    bp_type = preset['bp_type']
+                    if bp_type.lower() == 'v' or bp_type.lower() == 'vehicle':
+                        vehicles_list.append(world.spawn_actor(this_bp, bp_spawn))
+                        print('Preset ' + str(load_num + 1) + ' has spawned in \n')
+                    elif bp_type.lower() == 'w' or bp_type.lower() == 'walker':
+                        walkers_list.append(world.spawn_actor(this_bp, bp_spawn))
+                        print('Preset ' + str(load_num + 1) + ' has spawned in \n')
+        ask_save = True
+        N = int(input('How many new actors would you like to spawn? '))
         for actor_num in range(N):
-            cur_bp = input('Please enter a tag/name for actor ' +str(actor_num+1)+ ' from the blueprint library to spawn(ie. crossbike or model3): ')
-            bp_type = input('Is actor '+str(actor_num+1)+ ' a vehicle or walker type (check ref if unsure) [v/w]? ')
-            coords = input('Please enter the spawn location of actor ' +str(actor_num+1)+ ' as a tuple (x, y, z): ')
+            cur_bp = input('Please enter a tag/name for actor ' + str(actor_num + 1) + ' from the blueprint library to spawn(ie. crossbike or model3): ')
+            bp_type = input('Is actor ' + str(actor_num + 1) + ' a vehicle or walker type (check ref if unsure) [v/w]? ')
+            coords = input('Please enter the spawn location of actor ' + str(actor_num + 1) + ' as a tuple (x, y, z): ')
             coords = eval(coords)
 
             rotations = input('Please enter the degrees of rotation as a tuple (roll, pitch, yaw): ')
             rotations = eval(rotations)
-    
+
             this_bp = world.get_blueprint_library().filter(cur_bp)[0]
             bp_spawn = carla.Transform(carla.Location(x=coords[0], y=coords[1], z=coords[2]), carla.Rotation(pitch=rotations[1], yaw=rotations[2], roll=rotations[0]))
             if bp_type.lower() == 'v' or bp_type.lower() == 'vehicle':
                 vehicles_list.append(world.spawn_actor(this_bp, bp_spawn))
                 print('Actor ' + str(actor_num + 1) + ' has spawned in \n')
             elif bp_type.lower() == 'w' or bp_type.lower() == 'walker':
-                walkers_list.append(world.spawn_actor(this_bp, bp_spawn)) 
+                walkers_list.append(world.spawn_actor(this_bp, bp_spawn))
                 print('Actor ' + str(actor_num + 1) + ' has spawned in \n')
-
+            if ask_save:
+                save_bp = input('Do you want to save this actor as a preset [y/n] (NO -a to not be asked again)? ')
+                if save_bp.lower() == 'y' or save_bp.lower() == 'yes':
+                    save = {}
+                    save['x'] = coords[0]
+                    save['y'] = coords[1]
+                    save['z'] = coords[2]
+                    save['roll'] = rotations[0]
+                    save['pitch'] = rotations[1]
+                    save['yaw'] = rotations[2]
+                    save['name_tag'] = cur_bp
+                    save['bp_type'] = bp_type
+                    preset_name = input('What do you want to name this preset (ie. uber_crash or tesla_crash)? ')
+                    with open('saves.json', 'r+') as fp:
+                        saves = json.load(fp)
+                        saves[preset_name] = save
+                        with open('saves.json', 'w') as fp:
+                            json.dump(saves, fp, sort_keys=True, indent=4)
+                elif save_bp == 'NO -a':
+                    print('Will not ask to save actors again')
+                    ask_save = False
 #######################################################################################################################################################################
 
 

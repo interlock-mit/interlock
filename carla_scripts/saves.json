@@ -1,0 +1,12 @@
+{
+    "cycle_in_road": {
+        "bp_type": "v",
+        "name_tag": "crossbike",
+        "pitch": 0,
+        "roll": 0,
+        "x": 25,
+        "y": -5,
+        "yaw": 90,
+        "z": 1
+    }
+}
