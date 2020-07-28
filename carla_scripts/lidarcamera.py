@@ -5,6 +5,8 @@ from LiDAR.interlock import interlock
 import math
 import numpy as np
 
+FILTER = False
+
 class Lidarcamera:
     def __init__(self):
         self.world = None
@@ -20,6 +22,7 @@ class Lidarcamera:
         self.blueprint_lidar = None
 
         self.lidar_certificate = None
+        self.certificate_result = True
 
         # degrees
         self.certificate_angular_bounds = {"up": 5,
@@ -66,11 +69,12 @@ class Lidarcamera:
         self.row_heights = [self.certificate_distance*math.tan(self.d_to_rad(upper_fov-deg_per_row*i)) for i in range(top_idx, bot_idx+1)]
         self.certificate = [self.points[i][left_idx:right_idx,:3] for i in range(top_idx, bot_idx+1)]
         # filter thigns that are too close
-        for i in range(len(self.certificate)):
-            self.certificate[i] = self.certificate[i][~(self.certificate[i][:,0]>-self.certificate_distance)]
+        if FILTER:
+            for i in range(len(self.certificate)):
+                self.certificate[i] = self.certificate[i][~(self.certificate[i][:,0]>-self.certificate_distance)]
         
         self.display_points(np.vstack(self.certificate), self.lidar.get_location())
-        self.check_certificate()
+        self.certificate_result = self.check_certificate()
 
     def check_certificate(self):
         # transform here will depend on spawn loc
@@ -82,7 +86,6 @@ class Lidarcamera:
                 self.lane_bounds["right"], self.lane_bounds["up"], 
                 self.lane_bounds["down"], self.diffs["rl"], self.diffs["ud"],
                 self.diffs["row_dev"], self.row_heights, self.certificate)
-        print(result)
         return result
 
 
@@ -280,11 +283,26 @@ class Lidarcamera:
             trajectories = [[]]
             self.obstacle = None
 
-            self.obstacle = self.spawn_obstacle()
+            #self.obstacle = self.spawn_obstacle()
 
             while (True):
                 self.world.tick()
-                #ego_location = ego_vehicle.get_location()
+                strs = []
+                locs = []
+
+                loc = self.ego_vehicle.get_location()
+                strs.append("{:.2f}, ".format(loc.x) + "{:.2f}".format(loc.y) \
+                        + ", {:.2f}".format(loc.z))
+                locs.append([loc.x, loc.y, loc.z + 10.0])
+
+                strs.append( "{:.2f}, ".format(loc.x-self.certificate_distance) + "{:.2f}".format(loc.y) \
+                        + ", {:.2f}".format(loc.z))
+
+                locs.append([loc.x-self.certificate_distance, loc.y, loc.z + 10.0])
+
+                strs.append("Certificate GOOD" if self.certificate_result else "Certificate BAD")
+                locs.append([loc.x-5, loc.y-5, loc.z + 20.0])
+                self.painter.draw_texts(strs, locs, size=20)
                 ##@trajectories[0].append([ego_location.x, ego_location.y, ego_location.z])
 
                 ## draw trajectories
@@ -294,8 +312,6 @@ class Lidarcamera:
                 #ego_velocity = ego_vehicle.get_velocity()
                 #velocity_str = "{:.2f}, ".format(ego_velocity.x) + "{:.2f}".format(ego_velocity.y) \
                 #        + ", {:.2f}".format(ego_velocity.z)
-                #painter.draw_texts([velocity_str],
-                #            [[ego_location.x, ego_location.y, ego_location.z + 10.0]], size=20)
 
 
         finally:

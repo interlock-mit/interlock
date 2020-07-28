@@ -164,6 +164,8 @@ def main():
                     bp_type = preset['bp_type']
                     if bp_type.lower() == 'v' or bp_type.lower() == 'vehicle':
                         vehicles_list.append(world.spawn_actor(this_bp, bp_spawn))
+                        # so we can put at any pose any position and hold it there
+                        vehicles_list[-1].set_simulate_physics(False)
                         print('Preset ' + str(load_num + 1) + ' has spawned in \n')
                     elif bp_type.lower() == 'w' or bp_type.lower() == 'walker':
                         walkers_list.append(world.spawn_actor(this_bp, bp_spawn))
@@ -183,6 +185,8 @@ def main():
             bp_spawn = carla.Transform(carla.Location(x=coords[0], y=coords[1], z=coords[2]), carla.Rotation(pitch=rotations[1], yaw=rotations[2], roll=rotations[0]))
             if bp_type.lower() == 'v' or bp_type.lower() == 'vehicle':
                 vehicles_list.append(world.spawn_actor(this_bp, bp_spawn))
+                # so we can put at any pose any position and hold it there
+                vehicles_list[-1].set_simulate_physics(False)
                 print('Actor ' + str(actor_num + 1) + ' has spawned in \n')
             elif bp_type.lower() == 'w' or bp_type.lower() == 'walker':
                 walkers_list.append(world.spawn_actor(this_bp, bp_spawn))
