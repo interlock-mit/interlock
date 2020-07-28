@@ -5,7 +5,7 @@ from LiDAR.interlock import interlock
 import math
 import numpy as np
 
-FILTER = False
+FILTER = True
 
 class Lidarcamera:
     def __init__(self):
@@ -253,19 +253,19 @@ class Lidarcamera:
                 return
 
             # attach a camera and a lidar to the ego vehicle
-            blueprint_camera = self.world.get_blueprint_library().find('sensor.camera.rgb')
-            blueprint_camera.set_attribute('image_size_x', '640')
-            blueprint_camera.set_attribute('image_size_y', '480')
-            blueprint_camera.set_attribute('fov', '110')
-            blueprint_camera.set_attribute('sensor_tick', '0.1')
-            transform_camera = carla.Transform(carla.Location(x=.3, z=1.8))
-            self.camera = self.world.spawn_actor(blueprint_camera, transform_camera, attach_to=self.ego_vehicle)
-            self.camera.listen(lambda data: self.camera_listener(data))
+            #blueprint_camera = self.world.get_blueprint_library().find('sensor.camera.rgb')
+            #blueprint_camera.set_attribute('image_size_x', '640')
+            #blueprint_camera.set_attribute('image_size_y', '480')
+            #blueprint_camera.set_attribute('fov', '110')
+            #blueprint_camera.set_attribute('sensor_tick', '0.1')
+            #transform_camera = carla.Transform(carla.Location(x=.3, z=1.8))
+            #self.camera = self.world.spawn_actor(blueprint_camera, transform_camera, attach_to=self.ego_vehicle)
+            #self.camera.listen(lambda data: self.camera_listener(data))
 
             blueprint_lidar = self.world.get_blueprint_library().find('sensor.lidar.ray_cast')
             # these specs follow the velodyne vlp32 spec
-            #blueprint_lidar.set_attribute('range', '200')
-            blueprint_lidar.set_attribute('range', '30')
+            blueprint_lidar.set_attribute('range', '200')
+            #blueprint_lidar.set_attribute('range', '30')
             blueprint_lidar.set_attribute('rotation_frequency', '10')
             blueprint_lidar.set_attribute('channels', '32')
             blueprint_lidar.set_attribute('lower_fov', '-25')

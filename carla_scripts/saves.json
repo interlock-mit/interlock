@@ -8,5 +8,15 @@
         "y": -5,
         "yaw": 90,
         "z": 1
+    },
+    "flying_trash": {
+        "bp_type": "v",
+        "name_tag": "garbage03",
+        "pitch": 0,
+        "roll": 0,
+        "x": 220,
+        "y": -5,
+        "yaw": 0,
+        "z": 2
     }
 }
