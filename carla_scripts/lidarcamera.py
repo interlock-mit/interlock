@@ -1,6 +1,7 @@
 import carla
 import random
 from carla_scripts.carla_painter import CarlaPainter
+from LiDAR.interlock import interlock
 import math
 import numpy as np
 
@@ -16,12 +17,24 @@ class Lidarcamera:
         self.points = None
         self.point_idx = 0
         self.print_once = False
-        self.lidar_blueprint = None
-
-        self.expected_returns = None
-        self.expected_spacing = None
+        self.blueprint_lidar = None
 
         self.lidar_certificate = None
+
+        # degrees
+        self.certificate_angular_bounds = {"up": 5,
+                "down": -4,
+                "left": -7,
+                "right": 7}
+        # meters
+        self.certificate_distance = 20
+        # in coordinates relative to lidar origin
+        self.lane_bounds = {'left': -1, 'right': 1, 'down':-1.5, 'up':1.5}
+        self.diffs = {"rl": 0.1, "ud": 0.5, "row_dev": 0.1}
+        self.row_heights = []
+
+    def d_to_rad(self, deg):
+        return deg*np.pi/180.0
 
     def display_points(self, pts, origin):
         disp_pts = pts.copy()
@@ -31,8 +44,49 @@ class Lidarcamera:
         #translate = disp_pts + 0.05
         #out = np.stack((disp_pts, translate), axis=1).tolist()
         self.painter.draw_points(disp_pts.tolist())
+
+    def generate_certificate(self):
+        # assuming at this point the points are ordered such that the first
+        # point in the list is at the rear of the car
+
+        # calc which rows are needed
+        upper_fov = self.blueprint_lidar.get_attribute('upper_fov').as_float()
+        lower_fov = self.blueprint_lidar.get_attribute('lower_fov').as_float()
+
+        n = self.blueprint_lidar.get_attribute('channels').as_int()
+        deg_per_row = (upper_fov - lower_fov) / (n-1)
+        deg_per_pt = 360 / len(self.points[0])
+
+        bot_idx = 31-int((self.certificate_angular_bounds["down"]-lower_fov)/deg_per_row)
+        top_idx = 31-(int((self.certificate_angular_bounds["up"]-lower_fov)/deg_per_row) + 1)
+        left_idx = int((self.certificate_angular_bounds["left"]+180)/deg_per_pt)
+        right_idx = int((self.certificate_angular_bounds["right"]+180)/deg_per_pt)+1
+
+        # the height of the row at the minimum dist
+        self.row_heights = [self.certificate_distance*math.tan(self.d_to_rad(upper_fov-deg_per_row*i)) for i in range(top_idx, bot_idx+1)]
+        self.certificate = [self.points[i][left_idx:right_idx,:3] for i in range(top_idx, bot_idx+1)]
+        # filter thigns that are too close
+        for i in range(len(self.certificate)):
+            self.certificate[i] = self.certificate[i][~(self.certificate[i][:,0]>-self.certificate_distance)]
         
-       
+        self.display_points(np.vstack(self.certificate), self.lidar.get_location())
+        self.check_certificate()
+
+    def check_certificate(self):
+        # transform here will depend on spawn loc
+        for i in range(len(self.certificate)):
+            self.certificate[i][:,0] *= -1  # now forward is positive
+            self.certificate[i][:,1] *= -1  # now right is positive
+            self.certificate[i] = self.certificate[i].tolist()
+        result = interlock(self.certificate_distance, self.lane_bounds["left"],
+                self.lane_bounds["right"], self.lane_bounds["up"], 
+                self.lane_bounds["down"], self.diffs["rl"], self.diffs["ud"],
+                self.diffs["row_dev"], self.row_heights, self.certificate)
+        print(result)
+        return result
+
+
+   
 
     def angle(self, pt, origin=0):
         if isinstance(pt, carla.Vector3D):
@@ -124,14 +178,22 @@ class Lidarcamera:
                 indicies = np.array([(j+back_index) % num_pts for j in range(num_pts)])
                 self.points[i] = self.points[i][indicies,:]
 
-            origin = self.lidar.get_location()
-            self.display_points(self.points[31][:300,:3], origin)
+            #origin = self.lidar.get_location()
+            #self.display_points(self.points[31][:300,:3], origin)
+            self.generate_certificate()
+
+            # draw the distance
+            loc = self.ego_vehicle.get_location()
+            line = [[[loc.x-self.certificate_distance, loc.y-5, loc.z],[loc.x-self.certificate_distance, loc.y+5, loc.z]]]
+            self.painter.draw_polylines(line, width=0.2)
 
             self.scanned_angle = 0
             self.points = None
 
 
-    def spawn_obstacle(self, index=0, dist=10):
+
+
+    def spawn_obstacle(self, index=0, dist=15):
         if self.obstacle is not None:
             self.obstacle.destroy()
 

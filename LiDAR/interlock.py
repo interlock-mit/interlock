@@ -37,42 +37,67 @@ def interlock(min_forward_dist, lane_left, lane_right, lane_up, lane_down,
     # return a point corresponding to projection onto plane at min_forward_dist
     def proj(p):
       k = min_forward_dist / fb(p)
-      return (min_dist, rl(p) * k, ud(p) * k)
+      return (min_forward_dist, rl(p) * k, ud(p) * k)
 
     result = True
 
     # vertical spread
-    result = result && row_heights[0] >= lane_up
-    result = result && row_heights[len(row_heights)-1] <= lane_down
+    result = result and row_heights[0] >= lane_up
+    if not result:
+        print ("row_heights[0] < lane_up")
+        return False
+
+    result = result and row_heights[len(row_heights)-1] <= lane_down
+    if not result:
+        print ("row_heights[-1] > lane_down")
+        return False
 
 
     i = 0
     while (i < len(rows)):
         # horizontal spread
-        result = result && rl(proj (rows[i][0])) <= lane_left
-        result = result && rl(proj (rows[i][-1])) >= lane_right
+        result = result and rl(proj (rows[i][0])) <= lane_left
+        if not result:
+            print ("rl proj > lane_left")
+            return False
+        result = result and rl(proj (rows[i][-1])) >= lane_right
+        if not result:
+            print ("rl proj < lane_right")
+            return False
 
         j = 0
 
         while (j < len(rows[i])):
             # row height conformance
             dev = abs( ud(proj(rows[i][j])) - row_heights[i] )
-            result = result && dev <= max_row_dev
+            result = result and dev <= max_row_dev
+            if not result:
+                print ("a point deviates too far from row height")
+                return False
 
             # horizontal density
             if j+1 < len(rows[i]):
                 rl_diff = abs( rl(proj(rows[i][j])) - rl(proj(rows[i][j+1])))
-                result = result && rl_diff <= max_rl_diff
+                result = result and rl_diff <= max_rl_diff
+                if not result:
+                    print("gap too large")
+                    return False
 
             # Min forward dist conformance
-            result = result && fb(rows[i][j]) >= min_forward_dist
-            j++
+            result = result and fb(rows[i][j]) >= min_forward_dist
+            if not result:
+                print("point too close")
+                return False
+            j+=1
 
-    # row height separation
-    if i+1 < len(rows):
-    ud_diff = abs(row_heights[i] - row_heights[i+1])
-    result = result && ud_diff <= max_ud_diff
+        # row height separation
+        if i+1 < len(rows):
+            ud_diff = abs(row_heights[i] - row_heights[i+1])
+            result = result and ud_diff <= max_ud_diff
+            if not result:
+                print("rows too close")
+                return False
 
-    i++
+        i+=1
     return result
 
