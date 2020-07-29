@@ -4,10 +4,10 @@
         "name_tag": "crossbike",
         "pitch": 0,
         "roll": 0,
-        "x": 25,
+        "x": 205,
         "y": -5,
-        "yaw": 90,
-        "z": 1
+        "yaw": 0,
+        "z": 0
     },
     "flying_trash": {
         "bp_type": "v",
@@ -18,5 +18,55 @@
         "y": -5,
         "yaw": 0,
         "z": 2
+    },
+    "inclined_pole1": {
+        "bp_type": "v",
+        "name_tag": "streetsign",
+        "pitch": 0,
+        "roll": 45,
+        "x": 210,
+        "y": -11.5,
+        "yaw": 0,
+        "z": 0
+    },
+    "inclined_pole2": {
+        "bp_type": "v",
+        "name_tag": "streetsign",
+        "pitch": 0,
+        "roll": 45,
+        "x": 210,
+        "y": -10,
+        "yaw": 0,
+        "z": 1.5
+    },
+    "inclined_pole3": {
+        "bp_type": "v",
+        "name_tag": "streetsign",
+        "pitch": 0,
+        "roll": 45,
+        "x": 210,
+        "y": -8.5,
+        "yaw": 0,
+        "z": 3
+    },
+    "inclined_pole4": {
+        "bp_type": "v",
+        "name_tag": "streetsign",
+        "pitch": 0,
+        "roll": 45,
+        "x": 210,
+        "y": -7,
+        "yaw": 0,
+        "z": 4.5
+    },
+    "mid_mailbox": {
+        "bp_type": "v",
+        "name_tag": "mailbox",
+        "pitch": 0,
+        "roll": 0,
+        "x": 202,
+        "y": 1,
+        "yaw": -45,
+        "z": 0
     }
 }
