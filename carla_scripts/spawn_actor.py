@@ -146,9 +146,6 @@ def main():
                     for attr in blueprint:
                         print('  - {}'.format(attr))
             print()
-
-
-
         print()
 
         load_preset = input('Load saved preset(s) [y/n]? ')
@@ -162,15 +159,24 @@ def main():
                     this_bp = world.get_blueprint_library().filter(preset['name_tag'])[0]
                     bp_spawn = carla.Transform(carla.Location(x=preset['x'], y=preset['y'], z=preset['z']), carla.Rotation(pitch=preset['pitch'], yaw=preset['yaw'], roll=preset['roll']))
                     bp_type = preset['bp_type']
+                    try:
+                        attrs = preset['attributes']
+                        for name, val in attrs.items():
+                            this_bp.set_attribute(name, val)
+                    except KeyError:
+                        print('Attributes dict does NOT exist. Please add one into the preset (even if its emtpy)')
+
                     if bp_type.lower() == 'v' or bp_type.lower() == 'vehicle':
                         vehicles_list.append(world.spawn_actor(this_bp, bp_spawn))
                         # so we can put at any pose any position and hold it there
-                        vehicles_list[-1].set_simulate_physics(False)
+                        # vehicles_list[-1].set_simulate_physics(False)
                         print('Preset ' + str(load_num + 1) + ' has spawned in \n')
                     elif bp_type.lower() == 'w' or bp_type.lower() == 'walker':
                         walkers_list.append(world.spawn_actor(this_bp, bp_spawn))
                         print('Preset ' + str(load_num + 1) + ' has spawned in \n')
         ask_save = True
+        ask_attr = True
+        attributes = {}  # used to store attributes in a preset
         N = int(input('How many new actors would you like to spawn? '))
         for actor_num in range(N):
             cur_bp = input('Please enter a tag/name for actor ' + str(actor_num + 1) + ' from the blueprint library to spawn(ie. crossbike or model3): ')
@@ -183,14 +189,31 @@ def main():
 
             this_bp = world.get_blueprint_library().filter(cur_bp)[0]
             bp_spawn = carla.Transform(carla.Location(x=coords[0], y=coords[1], z=coords[2]), carla.Rotation(pitch=rotations[1], yaw=rotations[2], roll=rotations[0]))
+            
+            if ask_attr:
+                edit_attr = input('Do you want to edit this any of this actors attributes (MUST BE MODIFIABLE + check REF)[y/n]? ')
+                if edit_attr.lower() == 'y' or edit_attr.lower() == 'yes':
+                    attributes = {}
+                    attr_N = int(input('How many attributes will you like to edit? '))
+                    for attr_num in range(attr_N):
+                        attr_name = input('Name of attribute ' +str(attr_num + 1)+' to edit(e.g. color, size, etc.)? ')
+                        attr_val = input('Enter the value of '+str(attr_name)+' to be change to: ')
+                        attributes[attr_name] = attr_val
+                        this_bp.set_attribute(attr_name, attr_val)
+                
+                elif edit_attr == 'NO -a':
+                    ask_attr = False
+
+
             if bp_type.lower() == 'v' or bp_type.lower() == 'vehicle':
                 vehicles_list.append(world.spawn_actor(this_bp, bp_spawn))
                 # so we can put at any pose any position and hold it there
-                vehicles_list[-1].set_simulate_physics(False)
+                # vehicles_list[-1].set_simulate_physics(False)
                 print('Actor ' + str(actor_num + 1) + ' has spawned in \n')
             elif bp_type.lower() == 'w' or bp_type.lower() == 'walker':
                 walkers_list.append(world.spawn_actor(this_bp, bp_spawn))
                 print('Actor ' + str(actor_num + 1) + ' has spawned in \n')
+            
             if ask_save:
                 save_bp = input('Do you want to save this actor as a preset [y/n] (NO -a to not be asked again)? ')
                 if save_bp.lower() == 'y' or save_bp.lower() == 'yes':
@@ -203,6 +226,7 @@ def main():
                     save['yaw'] = rotations[2]
                     save['name_tag'] = cur_bp
                     save['bp_type'] = bp_type
+                    save['attributes'] = attributes
                     preset_name = input('What do you want to name this preset (ie. uber_crash or tesla_crash)? ')
                     with open('saves.json', 'r+') as fp:
                         saves = json.load(fp)

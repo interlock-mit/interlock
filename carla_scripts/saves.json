@@ -1,4 +1,15 @@
 {
+    "cycle_fall": {
+        "attributes": {},
+        "bp_type": "v",
+        "name_tag": "crossbike",
+        "pitch": 0,
+        "roll": 0,
+        "x": 214,
+        "y": -5,
+        "yaw": 90,
+        "z": 4
+    },
     "cycle_in_road": {
         "bp_type": "v",
         "name_tag": "crossbike",
@@ -58,5 +69,18 @@
         "y": -7,
         "yaw": 0,
         "z": 4.5
+    },
+    "tesla_fall": {
+        "attributes": {
+            "color": "(255,0,255)"
+        },
+        "bp_type": "v",
+        "name_tag": "model3",
+        "pitch": 0,
+        "roll": 0,
+        "x": 214,
+        "y": -5,
+        "yaw": 45,
+        "z": 2
     }
 }
