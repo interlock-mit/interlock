@@ -1,15 +1,4 @@
 {
-    "cycle_fall": {
-        "attributes": {},
-        "bp_type": "v",
-        "name_tag": "crossbike",
-        "pitch": 0,
-        "roll": 0,
-        "x": 214,
-        "y": -5,
-        "yaw": 90,
-        "z": 4
-    },
     "cycle_in_road": {
         "bp_type": "v",
         "name_tag": "crossbike",
@@ -21,7 +10,7 @@
         "z": 0
     },
     "pack_snow": {
-        "flying_trash1":{    
+        "snow1":{    
             "bp_type": "v",
             "name_tag": "garbage03",
             "pitch": 0,
@@ -31,7 +20,7 @@
             "yaw": 0,
             "z": 2
         },
-        "flying_trash2":{    
+        "snow2":{    
             "bp_type": "v",
             "name_tag": "garbage03",
             "pitch": 0,
@@ -41,7 +30,7 @@
             "yaw": 0,
             "z": 2.5
         },
-        "flying_trash3":{    
+        "snow3":{    
             "bp_type": "v",
             "name_tag": "garbage03",
             "pitch": 0,
@@ -51,7 +40,7 @@
             "yaw": 0,
             "z": 3
         },
-        "flying_trash4":{    
+        "snow4":{    
             "bp_type": "v",
             "name_tag": "garbage03",
             "pitch": 0,
@@ -61,7 +50,7 @@
             "yaw": 0,
             "z": 1.7
         },
-        "flying_trash5":{    
+        "snow5":{    
             "bp_type": "v",
             "name_tag": "garbage03",
             "pitch": 0,
@@ -71,7 +60,7 @@
             "yaw": 0,
             "z": 0.1
         },
-        "flying_trash6":{    
+        "snow6":{    
             "bp_type": "v",
             "name_tag": "garbage03",
             "pitch": 0,
@@ -81,7 +70,7 @@
             "yaw": 0,
             "z": 2
         },
-        "flying_trash7":{    
+        "snow7":{    
             "bp_type": "v",
             "name_tag": "garbage03",
             "pitch": 0,
