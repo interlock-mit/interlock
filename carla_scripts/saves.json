@@ -20,67 +20,118 @@
         "yaw": 0,
         "z": 0
     },
-    "flying_trash": {
-        "bp_type": "v",
-        "name_tag": "garbage03",
-        "pitch": 0,
-        "roll": 0,
-        "x": 220,
-        "y": -5,
-        "yaw": 0,
-        "z": 2
-    },
-    "inclined_pole1": {
-        "bp_type": "v",
-        "name_tag": "streetsign",
-        "pitch": 0,
-        "roll": 45,
-        "x": 210,
-        "y": -11.5,
-        "yaw": 0,
-        "z": 0
-    },
-    "inclined_pole2": {
-        "bp_type": "v",
-        "name_tag": "streetsign",
-        "pitch": 0,
-        "roll": 45,
-        "x": 210,
-        "y": -10,
-        "yaw": 0,
-        "z": 1.5
-    },
-    "inclined_pole3": {
-        "bp_type": "v",
-        "name_tag": "streetsign",
-        "pitch": 0,
-        "roll": 45,
-        "x": 210,
-        "y": -8.5,
-        "yaw": 0,
-        "z": 3
-    },
-    "inclined_pole4": {
-        "bp_type": "v",
-        "name_tag": "streetsign",
-        "pitch": 0,
-        "roll": 45,
-        "x": 210,
-        "y": -7,
-        "yaw": 0,
-        "z": 4.5
-    },
-    "tesla_fall": {
-        "attributes": {
-            "color": "(255,0,255)"
+    "pack_snow": {
+        "flying_trash1":{    
+            "bp_type": "v",
+            "name_tag": "garbage03",
+            "pitch": 0,
+            "roll": 0,
+            "x": 220,
+            "y": -5,
+            "yaw": 0,
+            "z": 2
         },
-        "bp_type": "v",
-        "name_tag": "model3",
-        "pitch": 0,
-        "roll": 0,
-        "x": 214,
-        "y": -5,
-        "yaw": 45,
-        "z": 2
+        "flying_trash2":{    
+            "bp_type": "v",
+            "name_tag": "garbage03",
+            "pitch": 0,
+            "roll": 0,
+            "x": 218,
+            "y": -4.5,
+            "yaw": 0,
+            "z": 2.5
+        },
+        "flying_trash3":{    
+            "bp_type": "v",
+            "name_tag": "garbage03",
+            "pitch": 0,
+            "roll": 0,
+            "x": 220,
+            "y": -7,
+            "yaw": 0,
+            "z": 3
+        },
+        "flying_trash4":{    
+            "bp_type": "v",
+            "name_tag": "garbage03",
+            "pitch": 0,
+            "roll": 0,
+            "x": 222,
+            "y": -6.5,
+            "yaw": 0,
+            "z": 1.7
+        },
+        "flying_trash5":{    
+            "bp_type": "v",
+            "name_tag": "garbage03",
+            "pitch": 0,
+            "roll": 0,
+            "x": 220,
+            "y": -3,
+            "yaw": 0,
+            "z": 0.1
+        },
+        "flying_trash6":{    
+            "bp_type": "v",
+            "name_tag": "garbage03",
+            "pitch": 0,
+            "roll": 0,
+            "x": 219,
+            "y": -4.5,
+            "yaw": 0,
+            "z": 2
+        },
+        "flying_trash7":{    
+            "bp_type": "v",
+            "name_tag": "garbage03",
+            "pitch": 0,
+            "roll": 0,
+            "x": 219,
+            "y": -6.3,
+            "yaw": 0,
+            "z": 2.2
+        }
+    },
+    "pack_inclined_pole":{
+        "inclined_pole1": {
+            "bp_type": "v",
+            "name_tag": "streetsign",
+            "pitch": 0,
+            "roll": 45,
+            "x": 210,
+            "y": -11.5,
+            "yaw": 0,
+            "z": 0
+        },
+        "inclined_pole2": {
+            "bp_type": "v",
+            "name_tag": "streetsign",
+            "pitch": 0,
+            "roll": 45,
+            "x": 210,
+            "y": -10,
+            "yaw": 0,
+            "z": 1.5
+        },
+        "inclined_pole3": {
+            "bp_type": "v",
+            "name_tag": "streetsign",
+            "pitch": 0,
+            "roll": 45,
+            "x": 210,
+            "y": -8.5,
+            "yaw": 0,
+            "z": 3
+        },
+        "inclined_pole4": {
+            "bp_type": "v",
+            "name_tag": "streetsign",
+            "pitch": 0,
+            "roll": 45,
+            "x": 210,
+            "y": -7,
+            "yaw": 0,
+            "z": 4.5
+        }
     }
 }

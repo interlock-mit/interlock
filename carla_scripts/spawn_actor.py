@@ -152,28 +152,49 @@ def main():
         if load_preset.lower() == 'y' or load_preset.lower() == 'yes':
             load_n = int(input('How many presets to load? '))
             for load_num in range(load_n):
-                save_name = input('The name of preset '+str(load_num + 1)+' to load(ie. uber_crash or tesla_crash)? ')
+                save_name = input('The name of preset '+str(load_num + 1)+' to load(ie. pack_snow or flying_trash)? ')
                 with open('saves.json', 'r+') as fp:
                     saves = json.load(fp)
-                    preset = saves[save_name]
-                    this_bp = world.get_blueprint_library().filter(preset['name_tag'])[0]
-                    bp_spawn = carla.Transform(carla.Location(x=preset['x'], y=preset['y'], z=preset['z']), carla.Rotation(pitch=preset['pitch'], yaw=preset['yaw'], roll=preset['roll']))
-                    bp_type = preset['bp_type']
-                    try:
-                        attrs = preset['attributes']
-                        for name, val in attrs.items():
-                            this_bp.set_attribute(name, val)
-                    except KeyError:
-                        print('Attributes dict does NOT exist. Please add one into the preset (even if its emtpy)')
+                    if save_name.startswith('pack'):
+                        pack = saves[save_name]
+                        for item in pack:
+                            preset = pack[item]
+                            this_bp = world.get_blueprint_library().filter(preset['name_tag'])[0]
+                            bp_spawn = carla.Transform(carla.Location(x=preset['x'], y=preset['y'], z=preset['z']), carla.Rotation(pitch=preset['pitch'], yaw=preset['yaw'], roll=preset['roll']))
+                            bp_type = preset['bp_type']
+                            try:
+                                attrs = preset['attributes']
+                                for name, val in attrs.items():
+                                    this_bp.set_attribute(name, val)
+                            except KeyError:
+                                print('Attributes dict does NOT exist. Please add one into this preset (even if its emtpy)')
 
-                    if bp_type.lower() == 'v' or bp_type.lower() == 'vehicle':
-                        vehicles_list.append(world.spawn_actor(this_bp, bp_spawn))
-                        # so we can put at any pose any position and hold it there
-                        # vehicles_list[-1].set_simulate_physics(False)
-                        print('Preset ' + str(load_num + 1) + ' has spawned in \n')
-                    elif bp_type.lower() == 'w' or bp_type.lower() == 'walker':
-                        walkers_list.append(world.spawn_actor(this_bp, bp_spawn))
-                        print('Preset ' + str(load_num + 1) + ' has spawned in \n')
+                            if bp_type.lower() == 'v' or bp_type.lower() == 'vehicle':
+                                vehicles_list.append(world.spawn_actor(this_bp, bp_spawn))
+                                # so we can put at any pose any position and hold it there
+                                vehicles_list[-1].set_simulate_physics(False)
+                            elif bp_type.lower() == 'w' or bp_type.lower() == 'walker':
+                                walkers_list.append(world.spawn_actor(this_bp, bp_spawn))
+                    else:
+                        preset = saves[save_name]
+                        this_bp = world.get_blueprint_library().filter(preset['name_tag'])[0]
+                        bp_spawn = carla.Transform(carla.Location(x=preset['x'], y=preset['y'], z=preset['z']), carla.Rotation(pitch=preset['pitch'], yaw=preset['yaw'], roll=preset['roll']))
+                        bp_type = preset['bp_type']
+                        try:
+                            attrs = preset['attributes']
+                            for name, val in attrs.items():
+                                this_bp.set_attribute(name, val)
+                        except KeyError:
+                            print('Attributes dict does NOT exist. Please add one into the preset (even if its emtpy)')
+
+                        if bp_type.lower() == 'v' or bp_type.lower() == 'vehicle':
+                            vehicles_list.append(world.spawn_actor(this_bp, bp_spawn))
+                            # so we can put at any pose any position and hold it there
+                            vehicles_list[-1].set_simulate_physics(False)
+                            print('Preset ' + str(load_num + 1) + ' has spawned in \n')
+                        elif bp_type.lower() == 'w' or bp_type.lower() == 'walker':
+                            walkers_list.append(world.spawn_actor(this_bp, bp_spawn))
+                            print('Preset ' + str(load_num + 1) + ' has spawned in \n')
         ask_save = True
         ask_attr = True
         attributes = {}  # used to store attributes in a preset
@@ -202,13 +223,14 @@ def main():
                         this_bp.set_attribute(attr_name, attr_val)
                 
                 elif edit_attr == 'NO -a':
+                    print('Will not ask to edit attributes again')
                     ask_attr = False
 
 
             if bp_type.lower() == 'v' or bp_type.lower() == 'vehicle':
                 vehicles_list.append(world.spawn_actor(this_bp, bp_spawn))
                 # so we can put at any pose any position and hold it there
-                # vehicles_list[-1].set_simulate_physics(False)
+                vehicles_list[-1].set_simulate_physics(False)
                 print('Actor ' + str(actor_num + 1) + ' has spawned in \n')
             elif bp_type.lower() == 'w' or bp_type.lower() == 'walker':
                 walkers_list.append(world.spawn_actor(this_bp, bp_spawn))
