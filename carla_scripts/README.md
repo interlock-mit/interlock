@@ -15,7 +15,7 @@
 
 - If you want to quickly spawn multiple objects (i.e. snow simulated by small trash), use the command line interface to save each object as its own preset, then in `saves.json` put all related objects into a nested json with a name starting with 'pack'. Reference `saves.json` and the 'pack_inclined_pole' as an example. 
 
-- If you want to switch an object's physics off/on, search for `.set_simulate_physics()`. The default is set to False so objects are not effected by gravity and fall, though they will still be visible to LiDAR.
+- If you want to switch an object's physics off/on, search for `.set_simulate_physics()`. The default is set to False so objects are not effected by gravity and do not fall, though they will still be visible to LiDAR.
 
 - Potential Error -> _Inconsistent RuntimeError because of collision at spawn position_: <br> - Trying to spawn objects too close to each other? Can easily happen without noticing as some actors are larger than expected (e.g. cars/trucks spawn in each other).
 <br> - Used all points in carla's default spawnpoints list? Though we typically use custom spawnpoints so this is less likely. <br> - **_FIX_**: Need to destroy all actors/blueprints using the destroy methods or restarting UE. This gets rid of any 'invisible' actors that may have been spawned and never destroyed due to abruptions. Also may need to switch physics on some actors to avoid collisions due to falling, though this is less likely.  
