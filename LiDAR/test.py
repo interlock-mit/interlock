@@ -4,7 +4,7 @@ import numpy as np
 import controller as contr
 import interlock as intr
 
-with open('lidar_data.yaml', 'r') as stream:
+with open('testing/lidar_data.yaml', 'r') as stream:
     rows_to_data_lists = yaml.safe_load(stream)
 
 data = []
