@@ -119,7 +119,7 @@ def smallest_cert(pts):
         while i < end:
             next_i = get_left_i(subdata[i:], 
                                 subdata[i][0]+max_xpt_separation)
-            if next_i == 0:
+            if not next_i:
                 return False
             i += next_i
             final_data.append(subdata[i][1])
