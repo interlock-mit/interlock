@@ -1,5 +1,10 @@
 MAX_DECEL = 10
 MIN_DIST = 1
+
+MAX_RL = 0.1
+MAX_UD = 0.5
+MAX_ROW_DEV = 0.1
+
 def add(vec1, vec2):
     return (vec1[0] + vec2[0], vec1[1] + vec2[1], vec1[2] + vec2[2])
 def mult(vec, factor):
@@ -23,5 +28,21 @@ def is_safe(ego_pos, ego_vel, other_pos, other_vel, timestep, min_dist=MIN_DIST,
         cur_time += timestep
     return True
 
+def interlock(ego_pos, ego_vel, points, timestep, min_dist=MIN_DIST, max_decel=MAX_DECEL):
+    """
+    ego_pos   : position of the vehicle (x_pos, y_pos, z_pos)
+    ego_vel   : velocity of the vehicle (x_vel, y_vel, z_vel)
+    points    : a list of points and velocities given by the certificate, 
+                each of the form ((x_pos, y_pos, z_pos), (x_vel, y_vel, z_vel))
+    timestep  : the time increment to consider
+    min_dist  : min distance we can be away from a point
+    max_decel : max deceleration of the vehicle
 
+    Returns True if the vehicle is at a safe distance from all points, False otherwise 
+    """
+    for point in points:
+        other_pos, other_vel = point
+        if not is_safe(ego_pos, ego_vel, other_pos, other_vel, timestep, min_dist, max_decel):
+            return False
+    return True
 
