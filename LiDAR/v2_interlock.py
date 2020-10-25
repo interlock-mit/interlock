@@ -1,9 +1,9 @@
 MAX_DECEL = 10
 MIN_DIST = 1
 
-MAX_RL = 0.1
-MAX_UD = 0.5
-MAX_ROW_DEV = 0.1
+# MAX_RL = 0.1
+# MAX_UD = 0.5
+# MAX_ROW_DEV = 0.1
 
 EGO_POS = (0,0,0)
 DEFAULT_TIMESTEP = .1
@@ -16,20 +16,37 @@ def mult(vec, factor):
 def dist(vec1, vec2):
     return ((vec1[0]-vec2[0])**2 + (vec1[1]-vec2[1])**2 + (vec1[2]-vec2[2])**2)**.5
 
+
 def is_safe(ego_pos, ego_vel, other_pos, other_vel, timestep=DEFAULT_TIMESTEP, min_dist=MIN_DIST, max_decel=MAX_DECEL):
     cur_speed = dist(ego_vel, (0,0,0))
     stopping_time = cur_speed/max_decel
-    cur_time = 0
-    cur_pos = ego_pos
-    other_cur_pos = other_pos
-    while cur_time < stopping_time:
-        if dist(cur_pos, other_cur_pos) < min_dist:
-            return False
 
-        # increment positions
-        cur_pos = add(mult(ego_vel, timestep), cur_pos)
-        other_cur_pos = add(mult(other_vel, timestep), other_cur_pos)
-        cur_time += timestep
+    def decel(vel, rate):
+        x, y, z = vel
+        def helper(val):
+            result = max(val - rate, 0) if val > 0 else min(val + rate, 0):
+            return result
+        return (helper(x), helper(y), helper(z))
+
+    def helper(ego_accel, other_accel):
+        cur_time = 0
+        cur_pos, cur_vel = ego_pos, ego_vel
+        other_cur_pos, other_cur_vel = other_pos, other_vel
+        while cur_time < stopping_time:
+            if dist(cur_pos, other_cur_pos) < min_dist:
+                return False
+
+            # increment velocities then positions 
+            cur_vel = decel(cur_vel, ego_accel)
+            other_cur_vel = decel(other_cur_vel, other_accel)
+            cur_pos = add(mult(cur_vel, timestep), cur_pos)
+            other_cur_pos = add(mult(other_cur_vel, timestep), other_cur_pos)
+            cur_time += timestep
+        return True
+    if not helper(MAX_DECEL, 0):
+        return False
+    if not helper(MAX_DECEL, MAX_DECEL):
+        return False
     return True
 
 def interlock(ego_pos, ego_vel, points, timestep=DEFAULT_TIMESTEP, min_dist=MIN_DIST, max_decel=MAX_DECEL):
