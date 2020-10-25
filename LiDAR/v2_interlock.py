@@ -32,13 +32,13 @@ def interlock(ego_pos, ego_vel, points, timestep, min_dist=MIN_DIST, max_decel=M
     """
     ego_pos   : position of the vehicle (x_pos, y_pos, z_pos)
     ego_vel   : velocity of the vehicle (x_vel, y_vel, z_vel)
-    points    : a list of points and velocities given by the certificate, 
+    points    : a list of points and velocities given by the certificate,
                 each of the form ((x_pos, y_pos, z_pos), (x_vel, y_vel, z_vel))
     timestep  : the time increment to consider
     min_dist  : min distance we can be away from a point
     max_decel : max deceleration of the vehicle
 
-    Returns True if the vehicle is at a safe distance from all points, False otherwise 
+    Returns True if the vehicle is at a safe distance from all points, False otherwise
     """
     for point in points:
         other_pos, other_vel = point
