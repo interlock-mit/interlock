@@ -1,15 +1,13 @@
 MAX_DECEL = 10
 MIN_DIST = 1
-<<<<<<< HEAD
 
 MAX_RL = 0.1
 MAX_UD = 0.5
 MAX_ROW_DEV = 0.1
-=======
+
 EGO_POS = (0,0,0)
 DEFAULT_TIMESTEP = .1
 
->>>>>>> 930be8811d7065f2d396da0adc6ca5879f2b7288
 
 def add(vec1, vec2):
     return (vec1[0] + vec2[0], vec1[1] + vec2[1], vec1[2] + vec2[2])
@@ -34,13 +32,12 @@ def is_safe(ego_pos, ego_vel, other_pos, other_vel, timestep=DEFAULT_TIMESTEP, m
         cur_time += timestep
     return True
 
-<<<<<<< HEAD
-def interlock(ego_pos, ego_vel, points, timestep, min_dist=MIN_DIST, max_decel=MAX_DECEL):
+def interlock(ego_pos, ego_vel, points, timestep=DEFAULT_TIMESTEP, min_dist=MIN_DIST, max_decel=MAX_DECEL):
     """
     ego_pos   : position of the vehicle (x_pos, y_pos, z_pos)
     ego_vel   : velocity of the vehicle (x_vel, y_vel, z_vel)
     points    : a list of points and velocities given by the certificate,
-                each of the form ((x_pos, y_pos, z_pos), (x_vel, y_vel, z_vel))
+                each of the form {"pos": (x_pos,y_pos,z_pos), "vel": (x_vel,y_vel,z_vel)}
     timestep  : the time increment to consider
     min_dist  : min distance we can be away from a point
     max_decel : max deceleration of the vehicle
@@ -48,12 +45,11 @@ def interlock(ego_pos, ego_vel, points, timestep, min_dist=MIN_DIST, max_decel=M
     Returns True if the vehicle is at a safe distance from all points, False otherwise
     """
     for point in points:
-        other_pos, other_vel = point
+        other_pos, other_vel = point["pos"], point["vel"]
         if not is_safe(ego_pos, ego_vel, other_pos, other_vel, timestep, min_dist, max_decel):
             return False
     return True
 
-=======
 if __name__ == "__main__":
     stationary_pts = [
         {"pos": (0,0,10), "vel": (0, 0, 0)},
@@ -68,5 +64,4 @@ if __name__ == "__main__":
 
     ]
     ego_vel = (0,0,10)
-    print(all(is_safe(EGO_POS, ego_vel, point["pos"], point["vel"]) for point in stationary_pts))
->>>>>>> 930be8811d7065f2d396da0adc6ca5879f2b7288
+    print(interlock(EGO_POS, ego_vel, stationary_pts))
