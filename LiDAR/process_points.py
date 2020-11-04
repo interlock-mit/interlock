@@ -12,14 +12,15 @@
 
 # if __name__ == "__main__":
 #     main()
-
+count = 0
 with open('lidar002310.ply', 'r') as f:
     while True:
-        line = f.readline().split(' ')
+        line = f.readline()
         if not line:
             break
+        line = line.split(" ")
         if len(line) > 4 and line[4] != "0.0":
             print(line)
         # elif len(line) < 4:
         #     print(line)
-        
+        #     count += 1
