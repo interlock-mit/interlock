@@ -8,7 +8,7 @@ def visualize(filename):
 
 def in_car_lane(point):
     x = float(point[0])
-    return x > -0.5 and x < 0.5
+    return x > -6 and x < 6
 
 filename = 'LiDAR/lidar002310.ply'
 with open(filename, 'r') as f:
@@ -17,13 +17,17 @@ with open(filename, 'r') as f:
         line = f.readline()
         if not line:
             break
-        line = line.split(" ")
+        line = line.strip("\n").split(" ")
         if len(line) > 4 and in_car_lane(line):
-            line_text = " ".join(line)
-            points_in_lane.append(line_text)
+            line = [float(num) for num in line]
+            points_in_lane.append(line[:3])
     points_in_lane = np.array(points_in_lane)
-
+    print(points_in_lane)
+visualize(filename)
 # TODO: write numpy array of filtered points to new .ply file
 new_filename = 'LiDAR/filtered-lidar.ply'
-el = PlyElement.describe(points_in_lane, 'name')
-PlyData([el]).write(new_filename)
+
+pcd = o3d.geometry.PointCloud()
+pcd.points = o3d.utility.Vector3dVector(points_in_lane)
+o3d.io.write_point_cloud(new_filename, pcd)
+visualize(new_filename)
