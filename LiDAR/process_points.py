@@ -25,10 +25,24 @@ def create_filtered_point_cloud(filename, new_filename):
     pcd = o3d.geometry.PointCloud()
     pcd.points = o3d.utility.Vector3dVector(points_in_lane)
     o3d.io.write_point_cloud(new_filename, pcd)
+    return points_in_lane
+
+
+def interlock(points, ego_vel, max_decel):
+    stopping_distance = (ego_vel**2)/(2*max_decel)
+    for point in points:
+        if not is_safe(point, stopping_distance, 0.5):
+            return False
+    return True
+
+def is_safe(point, stopping_distance, threshold):
+    return (point[1] < threshold) or (point[1] > stopping_distance)
 
 filename = 'LiDAR/lidar002310.ply'
 visualize(filename)
 
 new_filename = 'LiDAR/filtered-lidar.ply'
-create_filtered_point_cloud(filename, new_filename)
+points = create_filtered_point_cloud(filename, new_filename)
 visualize(new_filename)
+
+print(interlock(points, 0, -15))
