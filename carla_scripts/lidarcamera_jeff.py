@@ -156,65 +156,67 @@ class Lidarcamera:
 
         if self.scanned_angle >= 2:
             self.count += 1
-            if self.count %10 == 0:
-                xyz_pts = self.points[:,:3]
-                print(xyz_pts.shape)
-                pcd = o3d.geometry.PointCloud()
-                pcd.points = o3d.utility.Vector3dVector(xyz_pts.astype(np.float64))
-                o3d.io.write_point_cloud(f"lidar/{data.frame}.ply", pcd)
+            xyz_pts = self.points[:,:3]
+            print(xyz_pts.shape)
+            # pcd = o3d.geometry.PointCloud()
+            # pcd.points = o3d.utility.Vector3dVector(xyz_pts.astype(np.float64))
+            # o3d.io.write_point_cloud(f"lidar/{data.frame}.ply", pcd)
 
 
-                pcd = o3d.geometry.PointCloud()
-                xyz_filtered = xyz_pts[((xyz_pts[:, 0] > -2) & (xyz_pts[:,0] < 2) & (xyz_pts[:,1] > 0) & (xyz_pts[:,2] > -1.2))]
-                # testing other filters
-                # xyz_filtered = xyz_pts[(xyz_pts[:,2] > -1)]
-                # xyz_filtered = xyz_pts[((xyz_pts[:, 0] > -2) & (xyz_pts[:,0] < 2))]
-                # xyz_filtered = xyz_pts[(xyz_pts[:,1] > 0)]
-                vs = [self.world.get_actor(x.actor_id) for x in self.vehicles]
-                # print(vs)
-                
+            # pcd = o3d.geometry.PointCloud()
+            xyz_filtered = xyz_pts[((xyz_pts[:, 0] > -2) & (xyz_pts[:,0] < 2) & (xyz_pts[:,1] > 0) & (xyz_pts[:,2] > -1.2))]
+            # testing other filters
+            # xyz_filtered = xyz_pts[(xyz_pts[:,2] > -1)]
+            # xyz_filtered = xyz_pts[((xyz_pts[:, 0] > -2) & (xyz_pts[:,0] < 2))]
+            # xyz_filtered = xyz_pts[(xyz_pts[:,1] > 0)]
+            vs = [self.world.get_actor(x.actor_id) for x in self.vehicles]
+            # print(vs)
+            
 
-                # TODO: add z coordinate
-                locs = [(v.get_location().x - v.bounding_box.extent.x,
-                        v.get_location().x + v.bounding_box.extent.x,
-                        v.get_location().y - v.bounding_box.extent.y,
-                        v.get_location().y + v.bounding_box.extent.y) for v in vs]
-                print(locs)
-                lidar_loc = self.lidar.get_location()
+            # TODO: add z coordinate
+            locs = [(v.get_location().x - v.bounding_box.extent.x,
+                    v.get_location().x + v.bounding_box.extent.x,
+                    v.get_location().y - v.bounding_box.extent.y,
+                    v.get_location().y + v.bounding_box.extent.y) for v in vs]
+            # print(locs)
+            lidar_loc = self.lidar.get_location()
 
-                print('lidar at', lidar_loc)
+            # print('lidar at', lidar_loc)
 
-                print('filtered', xyz_filtered)
+            # print('filtered', xyz_filtered)
 
 
-                colors = np.zeros(xyz_filtered.shape)
-                velocities = np.zeros(xyz_filtered.shape)
+            colors = np.zeros(xyz_filtered.shape)
+            velocities = np.zeros(xyz_filtered.shape)
 
-                # velocities of every car relative to LiDAR
-                car_velocities = [0, 0, 0]
-                ego_vel = self.ego_vehicle.get_velocity() 
-                ego_speed = (ego_vel.x ** 2 + ego_vel.y ** 2 + ego_vel.z ** 2) ** .5
-                for i, point in enumerate(xyz_filtered):
-                    # TODO: use vehicle transform to do non-jank rotation transform
-                    px = point[1] + lidar_loc.x
-                    py = point[0] + lidar_loc.y
-                    for leftX, rightX, backY, frontY in locs:
-                        if leftX <= px <= rightX and backY <= py <= frontY:
-                            colors[i] = [1, 0, 0]
-                            # TODO: make this not 1d 
-                            # velocities are relative to the stationary location of the car
-                            velocities[i] = [car_velocities[0], car_velocities[1] + ego_speed, car_velocities[2]]
-                            break
-                        else:
-                            colors[i] = [0, 1, 1]
-                            velocities[i] = [0, 0, 0]
+            # velocities of every car relative to LiDAR
+            car_velocities = [v.get_velocity() for v in vs]
+            ego_vel = self.ego_vehicle.get_velocity() 
+            ego_speed = (ego_vel.x ** 2 + ego_vel.y ** 2 + ego_vel.z ** 2) ** .5
 
-                pcd.colors = o3d.utility.Vector3dVector(colors.astype(np.float64))
+            ego_dist_to_front = self.ego_vehicle.bounding_box.extent.y
+            xyz_filtered[:,1] -= ego_dist_to_front
+            for i, point in enumerate(xyz_filtered):
+                # TODO: use vehicle transform to do non-jank rotation transform
+                px = point[1] + lidar_loc.x
+                py = point[0] + lidar_loc.y
+                for j, (leftX, rightX, backY, frontY) in enumerate(locs):
+                    if leftX <= px <= rightX and backY <= py <= frontY:
+                        colors[i] = [1, 0, 0]
+                        # TODO: make this not 1d 
+                        # velocities are relative to the stationary location of the car
+                        velocities[i] = [car_velocities[j].x, car_velocities[j].y, car_velocities[j].z]
+                        break
+                    else:
+                        colors[i] = [0, 1, 1]
+                        velocities[i] = [0, 0, 0]
 
-                pcd.points = o3d.utility.Vector3dVector(xyz_filtered.astype(np.float64))
-                o3d.io.write_point_cloud(f"lidar/{data.frame}_filtered.ply", pcd)
-                
-                self.certificate_result, self.closest_point = interlock(xyz_filtered, velocities, ego_speed)
+            # pcd.colors = o3d.utility.Vector3dVector(colors.astype(np.float64))
+
+            # pcd.points = o3d.utility.Vector3dVector(xyz_filtered.astype(np.float64))
+            # o3d.io.write_point_cloud(f"lidar/{data.frame}_filtered.ply", pcd)
+            
+            self.certificate_result, self.closest_point = interlock(xyz_filtered, velocities, ego_speed)
 
             self.scanned_angle = 0
             self.points = None
@@ -382,7 +384,7 @@ def egoAndCarDrivingAutoPilot(spawn_points, blueprints_vehicles, tm_port, apply_
 
 def egoCrashingIntoStationaryCar(spawn_points, blueprints_vehicles, tm_port, apply_batch, world):
     ego_transform = carla.Transform(carla.Location(x=110.07566833496, y=8.87075996, z=0.27530714869499207))
-    vehicle_2_transform = carla.Transform(carla.Location(x=140.07566833496, y=8.87075996, z=0.27530714869499207))
+    vehicle_2_transform = carla.Transform(carla.Location(x=160.07566833496, y=8.87075996, z=0.27530714869499207))
 
     # set ego vehicle's role name to let CarlaViz know this vehicle is the ego vehicle
     blueprints_vehicles[0].set_attribute('role_name', 'ego') # or set to 'hero'
@@ -392,9 +394,9 @@ def egoCrashingIntoStationaryCar(spawn_points, blueprints_vehicles, tm_port, app
     batch = [actor1, actor2]
     
     results = apply_batch(batch, True)
-    world.get_actor(results[0].actor_id).set_velocity(carla.Vector3D(20,0,0))
+    world.get_actor(results[0].actor_id).set_target_velocity(carla.Vector3D(10,0,0))
     return results
 
 if __name__ == "__main__":
     lidarcamera = Lidarcamera()
-    lidarcamera.main(egoCrashingIntoStationaryCar)
+    lidarcamera.main(egoAndCarDrivingAutoPilot)
