@@ -4,7 +4,7 @@ from carla_scripts.carla_painter import CarlaPainter
 from LiDAR.interlock import interlock
 import math
 import numpy as np
-import time
+import open3d as o3d
 
 FILTER = True
 
@@ -21,13 +21,14 @@ class Lidarcamera:
         self.point_idx = 0
         self.print_once = False
         self.blueprint_lidar = None
-        self.vehicles = []
-        self.lidarpoints = [[]]
-        self.ego_id = None
-        self.tm = None
-
         self.lidar_certificate = None
         self.certificate_result = True
+
+        # new
+        self.tm = None
+        self.vehicles = []
+        self.closest_point = None
+        self.count = 0
 
         # degrees
         self.certificate_angular_bounds = {"up": 5,
@@ -38,7 +39,7 @@ class Lidarcamera:
         self.certificate_distance = 20
         # in coordinates relative to lidar origin
         self.lane_bounds = {'left': -1, 'right': 1, 'down':-1.5, 'up':1.5}
-        self.diffs = {"rl": 0.21, "ud": 0.5, "row_dev": 0.1}
+        self.diffs = {"rl": 0.1, "ud": 0.5, "row_dev": 0.1}
         self.row_heights = []
 
     def d_to_rad(self, deg):
@@ -105,134 +106,138 @@ class Lidarcamera:
     def camera_listener(self, data):
         pass
 
-    
-    def lidar_with_velocities(self, dir_loc, lidar_loc):
-        # write to lidar file the velocities
-        n = len(self.lidarpoints)-1
-        self.lidarpoints.append([])
-        numberOfPoints = str(sum(len(i) for i in self.lidarpoints[n]))
-        print("start: " + dir_loc + ", n = " + str(n) + ", points = " + numberOfPoints)
-        s = time.time()
-        plyFile = open(dir_loc, "w")
-        plyFile.write("ply\nformat ascii 1.0\nelement vertex " + numberOfPoints + "\nproperty float32 x\nproperty float32 y\nproperty float32 z\nproperty uchar red\nend_header\n")
-        vs = [self.world.get_actor(x.actor_id) for x in self.vehicles]
-        locs = [(v.get_location().x, v.get_location().y, v.get_location().z, v.bounding_box.extent.x, v.bounding_box.extent.y, v.bounding_box.extent.z) for v in vs]
-        for points in self.lidarpoints[n]:
-            for i in range(len(points)):
-                pointLoc = points[i]
-                red = 0
-                px = -pointLoc.y + lidar_loc.x
-                py = -pointLoc.x + lidar_loc.y
-                pz = -pointLoc.z + lidar_loc.z
-                for (boxlocx, boxlocy, boxlocz, boxdimsx, boxdimsy, boxdimsz) in locs:
-                    leftXBound = boxlocx - boxdimsx
-                    rightXBound = boxlocx + boxdimsx
-                    leftYBound = boxlocy - boxdimsy
-                    rightYBound = boxlocy + boxdimsy
-                    if leftXBound <= px <= rightXBound and leftYBound <= py <= rightYBound:
-                        red = 255
-                plyFile.write(str(px) + " " + str(py) + " " + str(pz) + " " + str(red) + "\n")
-
-        plyFile.close()
-        print("done: " + dir_loc + ", time: " + str(time.time()-s))
-
     def lidar_listener(self, data):
-        print('listening data: ', str(data)[:20])
         n = data.channels
         # the raw data contains info on the number of points per channel,
         # and points are ordered based on channel, so we can calculate the
         # ending indicies for all channels
-        counts = [0]
-        self.lidarpoints[-1].append(data)
-        for i in range(n):
-            counts.append(counts[i] + data.get_point_count(i))
-        """
+        # counts = [0]
+        # for i in range(n):
+        #     counts.append(counts[i] + data.get_point_count(i))
+
         # massage the points into the right shape
         points = np.frombuffer(data.raw_data, dtype=np.dtype('f4'))
-        points = np.array(np.reshape(points, (int(points.shape[0] / 3),3)))
+        points = np.array(np.reshape(points, (int(points.shape[0] / 4),4)))
+
+        def interlock(points, ego_vel, max_decel = 10):
+            stopping_distance = (ego_vel**2)/(2*max_decel)
+            closest = float('inf')
+            safe = True
+            for point in points:
+                if point[0] > -6 and point[0] < 6:
+                    if not is_safe(point, stopping_distance, 0.5):
+                        safe = False
+                    if point[1] < closest and point[1] > .5:
+                        closest = point[1]
+            return safe, closest
+
+        def is_safe(point, stopping_distance, threshold):
+            return (point[1] < threshold) or (point[1] > stopping_distance)
+
+
 
         # some weird transformations have to happen for the visualizer:
         # flip the x and y coords 
         points[:,[0,1]] = points[:,[1,0]]
+        # points[:,1] *= -1
+        # points[:,2] *= -1
 
-        # mirror the y and z coords
-        points[:,1] *= -1
-        points[:,2] *= -1
 
         # calculate the angle of each point, so that we can make sure they're
         # ordered correctly
-        points = np.hstack((points, np.arctan2(points[:,1], points[:,0]).reshape(points.shape[0], 1)))
+        # points = np.hstack((points, np.arctan2(points[:,1], points[:,0]).reshape(points.shape[0], 1)))
+
         # translate to the lidar unit's location
-        loc = self.lidar.get_location()
-        #points[:,0] += loc.x
-        #points[:,1] += loc.y
-        #points[:,2] += loc.z
-        #TODO
-        # right now the angles are in world coordinates centered about the 
-        # lidar, we need to make the angles relative to the car's orientation
+        # loc = self.lidar.get_location()
+        # points[:,0] += loc.x
+        # points[:,1] += loc.y
+        # points[:,2] += loc.z
 
-        # instantiate the points dict
-        if self.points is None:
-            self.points = {i:None for i in range(n)}
+    
 
-        # place the data by row into the points dict, using the indicies we
-        # calculated earlier
-        for i in range(n):
-            if self.points[i] is None:
-                self.points[i] = points[counts[i]:counts[i+1]].copy()
-            else:
-                self.points[i] = np.vstack((self.points[i], points[counts[i]:counts[i+1]]))
-        """
+        # #TODO
+        # # right now the angles are in world coordinates centered about the 
+        # # lidar, we need to make the angles relative to the car's orientation
+        if self.points is not None:
+            self.points = np.append(self.points, points, axis=0)
+        else:
+            self.points = points
+
         # the lidar does not complete a full rotation every tick, so we keep
         # track of the scanned angle to know when it has finished one rotation
-        self.scanned_angle += data.horizontal_angle
-        print('new scanned angle: ', self.scanned_angle, data.horizontal_angle)
-        if self.scanned_angle >= 2*math.pi:
-            # calc angles and append
-            # calc the forward angle of the car, then find the opposite of it
-            # so that we know which angle the lidar scans should start at
-            """
-            forward_vec = self.ego_vehicle.get_transform().get_forward_vector()
-            forward_angle = self.angle(forward_vec)
-            # rotate 180 degrees
-            back_angle = forward_angle + np.pi
-            if back_angle > np.pi:
-                back_angle = -2*np.pi + back_angle
-            elif back_angle < -np.pi:
-                back_angle = 2*np.pi + back_angle
+        self.scanned_angle += 1
+        num_pts = 0
+        for channel in range(n):
+            num_pts += data.get_point_count(channel)
+        # print('num pts: ', num_pts, ' shape of poitns is', points.shape, 'shape of self is', self.points.shape)
 
-            for i in range(n):
-                # sort each row by angle
-                self.points[i] = self.points[i][np.argsort(self.points[i][:,3])]
+        if self.scanned_angle >= 2:
+            self.count += 1
+            if self.count %10 == 0:
+                xyz_pts = self.points[:,:3]
+                print(xyz_pts.shape)
+                pcd = o3d.geometry.PointCloud()
+                pcd.points = o3d.utility.Vector3dVector(xyz_pts.astype(np.float64))
+                o3d.io.write_point_cloud(f"lidar/{data.frame}.ply", pcd)
 
-                # now re-order the array so that the points start at the back
-                # of the car and go around the front, from left to right
 
-                # the first point in the array at this point in the code should
-                # be at angle -pi. so, find the index at which we'd find the
-                # back of the car
-                num_pts = self.points[i].shape[0]
-                rad_per_pt = 2*np.pi / num_pts
-                back_index = abs(int((back_angle+np.pi) / rad_per_pt))
-                indicies = np.array([(j+back_index) % num_pts for j in range(num_pts)])
-                self.points[i] = self.points[i][indicies,:]
+                pcd = o3d.geometry.PointCloud()
+                xyz_filtered = xyz_pts[((xyz_pts[:, 0] > -2) & (xyz_pts[:,0] < 2) & (xyz_pts[:,1] > 0) & (xyz_pts[:,2] > -1.2))]
+                # testing other filters
+                # xyz_filtered = xyz_pts[(xyz_pts[:,2] > -1)]
+                # xyz_filtered = xyz_pts[((xyz_pts[:, 0] > -2) & (xyz_pts[:,0] < 2))]
+                # xyz_filtered = xyz_pts[(xyz_pts[:,1] > 0)]
+                vs = [self.world.get_actor(x.actor_id) for x in self.vehicles]
+                # print(vs)
+                
 
-            #origin = self.lidar.get_location()
-            #self.display_points(self.points[31][:300,:3], origin)
-            #self.generate_certificate()
-            # UNCOMMENT PREV LINE FOR CERTIFICATE
+                # TODO: add z coordinate
+                locs = [(v.get_location().x - v.bounding_box.extent.x,
+                        v.get_location().x + v.bounding_box.extent.x,
+                        v.get_location().y - v.bounding_box.extent.y,
+                        v.get_location().y + v.bounding_box.extent.y) for v in vs]
+                print(locs)
+                lidar_loc = self.lidar.get_location()
 
-            # draw the distance
-            loc = self.ego_vehicle.get_location()
-            line = [[[loc.x-self.certificate_distance, loc.y-5, loc.z],[loc.x-self.certificate_distance, loc.y+5, loc.z]]]
-            self.painter.draw_polylines(line, width=0.2)
-            
-            """
-            print('full circle')
-            self.points = None
+                print('lidar at', lidar_loc)
+
+                print('filtered', xyz_filtered)
+
+
+                colors = np.zeros(xyz_filtered.shape)
+                velocities = np.zeros(xyz_filtered.shape)
+
+                # velocities of every car relative to LiDAR
+                car_velocities = [0, 0, 0]
+                ego_vel = self.ego_vehicle.get_velocity() 
+                ego_speed = (ego_vel.x ** 2 + ego_vel.y ** 2 + ego_vel.z ** 2) ** .5
+                for i, point in enumerate(xyz_filtered):
+                    # TODO: use vehicle transform to do non-jank rotation transform
+                    px = point[1] + lidar_loc.x
+                    py = point[0] + lidar_loc.y
+                    for leftX, rightX, backY, frontY in locs:
+                        if leftX <= px <= rightX and backY <= py <= frontY:
+                            colors[i] = [1, 0, 0]
+                            # TODO: make this not 1d 
+                            # velocities are relative to the stationary location of the car
+                            velocities[i] = [car_velocities[0], car_velocities[1] + ego_speed, car_velocities[2]]
+                            break
+                        else:
+                            colors[i] = [0, 1, 1]
+                            velocities[i] = [0, 0, 0]
+
+                pcd.colors = o3d.utility.Vector3dVector(colors.astype(np.float64))
+
+                pcd.points = o3d.utility.Vector3dVector(xyz_filtered.astype(np.float64))
+                o3d.io.write_point_cloud(f"lidar/{data.frame}_filtered.ply", pcd)
+                
+            self.certificate_result, self.closest_point = interlock(xyz_filtered, velocities, ego_speed)
+
             self.scanned_angle = 0
-            sendTo = 'lidar/lidar%.6d.ply' % data.frame
-            self.lidar_with_velocities(sendTo, self.lidar.get_location())
+            self.points = None
+
+
+
 
     def spawn_obstacle(self, index=0, dist=15):
         if self.obstacle is not None:
@@ -257,12 +262,12 @@ class Lidarcamera:
             # initialize one painter
             try:
                 self.painter = CarlaPainter('localhost', 8089)
-            except:
+            except Exception as e:
                 print("NO PAINTER")
+                print(e)
                 self.painter = None
 
             self.client = carla.Client('localhost', 2000)
-            
             self.client.set_timeout(10.0)
             self.world = self.client.get_world()
 
@@ -270,7 +275,7 @@ class Lidarcamera:
             previous_settings = self.world.get_settings()
             self.world.apply_settings(carla.WorldSettings(
                 synchronous_mode=True,
-                fixed_delta_seconds=1.0 / 30.0))
+                fixed_delta_seconds=1.0 / 20.0))
             self.tm = self.client.get_trafficmanager()
             self.tm.set_synchronous_mode(True)
             self.tm_port = self.tm.get_port()
@@ -279,16 +284,13 @@ class Lidarcamera:
             spawn_points = self.world.get_map().get_spawn_points()
             blueprints_vehicles = self.world.get_blueprint_library().filter("vehicle.*")
 
-            #ego_transform = spawn_points[0]
-            # following line is for testing. uncomment previous and remove following
             ego_transform = carla.Transform(carla.Location(x=120.07566833496, y=8.87075996, z=0.27530714869499207))
 
             blueprints_vehicles = [x for x in blueprints_vehicles if int(x.get_attribute('number_of_wheels')) == 4]
 
             # set ego vehicle's role name to let CarlaViz know this vehicle is the ego vehicle
             blueprints_vehicles[0].set_attribute('role_name', 'ego') # or set to 'hero'
-            #batch = [carla.command.SpawnActor(blueprints_vehicles[0], ego_transform).then(carla.command.SetAutopilot(carla.command.FutureActor, True))]
-            # following is for testing. uncomment previous and 1.1: remove below
+
             ac1 = carla.command.SpawnActor(blueprints_vehicles[0], ego_transform).then(carla.command.SetAutopilot(carla.command.FutureActor, True, self.tm_port))
             ac2 = carla.command.SpawnActor(blueprints_vehicles[1], carla.Transform(carla.Location(x=130.07566833496, y=8.87075996, z=0.27530714869499207))).then(carla.command.SetAutopilot(carla.command.FutureActor, True, self.tm_port))
             batch = [ac1, ac2]
@@ -304,6 +306,15 @@ class Lidarcamera:
                 self.ego_vehicle = None
                 return
 
+            # batch = [carla.command.SpawnActor(blueprints_vehicles[0], ego_transform).then(carla.command.SetAutopilot(carla.command.FutureActor, False))]
+            # results = self.client.apply_batch_sync(batch, False)
+            # if not results[0].error:
+            #     self.ego_vehicle = self.world.get_actor(results[0].actor_id)
+            # else:
+            #     print('spawn ego error, exit')
+            #     self.ego_vehicle = None
+            #     return
+
             # attach a camera and a lidar to the ego vehicle
             #blueprint_camera = self.world.get_blueprint_library().find('sensor.camera.rgb')
             #blueprint_camera.set_attribute('image_size_x', '640')
@@ -316,8 +327,8 @@ class Lidarcamera:
 
             blueprint_lidar = self.world.get_blueprint_library().find('sensor.lidar.ray_cast')
             # these specs follow the velodyne vlp32 spec
-            #blueprint_lidar.set_attribute('range', '200')
-            blueprint_lidar.set_attribute('range', '30')
+            blueprint_lidar.set_attribute('range', '200')
+            #blueprint_lidar.set_attribute('range', '30')
             blueprint_lidar.set_attribute('rotation_frequency', '10')
             blueprint_lidar.set_attribute('channels', '32')
             blueprint_lidar.set_attribute('lower_fov', '-25')
@@ -330,14 +341,13 @@ class Lidarcamera:
 
             # tick to generate these actors in the game world
             self.world.tick()
-            
+
             # save vehicles' trajectories to draw in the frontend
             trajectories = [[]]
             self.obstacle = None
-            # self.ego_vehicle.set_autopilot(False, self.tm_port)
 
             #self.obstacle = self.spawn_obstacle()
-            count = 0
+
             while (True):
                 self.world.tick()
                 strs = []
@@ -348,10 +358,12 @@ class Lidarcamera:
                         + ", {:.2f}".format(loc.z))
                 locs.append([loc.x, loc.y, loc.z + 10.0])
 
-                strs.append( "{:.2f}, ".format(loc.x-self.certificate_distance) + "{:.2f}".format(loc.y) \
-                        + ", {:.2f}".format(loc.z))
+                # strs.append( "{:.2f}, ".format(loc.x-self.certificate_distance) + "{:.2f}".format(loc.y) \
+                #         + ", {:.2f}".format(loc.z))
+                strs.append('closest point: '+ str(self.closest_point)[:4])
 
                 locs.append([loc.x-self.certificate_distance, loc.y, loc.z + 10.0])
+
                 strs.append("Certificate GOOD" if self.certificate_result else "Certificate BAD")
                 locs.append([loc.x-5, loc.y-5, loc.z + 20.0])
                 self.painter.draw_texts(strs, locs, size=20)
@@ -366,21 +378,6 @@ class Lidarcamera:
                 #        + ", {:.2f}".format(ego_velocity.z)
 
 
-
-                # if count % 50 == 0:
-                #     print(self.ego_vehicle, type(self.ego_vehicle))
-                #     if self.ego_vehicle is not None:
-                #         self.ego_vehicle.set_autopilot(False, self.tm_port)
-                #         self.ego_vehicle.set_target_angular_velocity(carla.Vector3D(0.0,0.0,0.0))
-
-                #         self.ego_vehicle.set_target_velocity(carla.Vector3D(0.0,0.0,0.0))
-                #         print('set target vel')
-
-                # count += 1
-                # if count%25 == 0:
-                #     print(count)
-                #     print('vel is ', self.ego_vehicle.get_velocity())
-
         finally:
             if previous_settings is not None:
                 self.world.apply_settings(previous_settings)
@@ -394,6 +391,7 @@ class Lidarcamera:
                 self.ego_vehicle.destroy()
             if self.obstacle is not None:
                 self.obstacle.destroy()
+            self.client.apply_batch([carla.command.DestroyActor(x.actor_id) for x in self.vehicles])
 
 if __name__ == "__main__":
     lidarcamera = Lidarcamera()
