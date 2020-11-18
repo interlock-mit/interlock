@@ -231,7 +231,7 @@ class Lidarcamera:
                 pcd.points = o3d.utility.Vector3dVector(xyz_filtered.astype(np.float64))
                 o3d.io.write_point_cloud(f"lidar/{data.frame}_filtered.ply", pcd)
                 
-            self.certificate_result, self.closest_point = interlock(xyz_filtered, velocities, ego_speed)
+                self.certificate_result, self.closest_point = interlock(xyz_filtered, velocities, ego_speed)
 
             self.scanned_angle = 0
             self.points = None
@@ -257,7 +257,7 @@ class Lidarcamera:
         s.rotation.pitch = 0.0
         return self.world.try_spawn_actor(bp, s)
 
-    def main(self):
+    def main(self, case):
         try:
             # initialize one painter
             try:
@@ -280,22 +280,12 @@ class Lidarcamera:
             self.tm.set_synchronous_mode(True)
             self.tm_port = self.tm.get_port()
             print('tm port is: ', self.tm_port)
+            
             # spawn an ego vehicle
             spawn_points = self.world.get_map().get_spawn_points()
             blueprints_vehicles = self.world.get_blueprint_library().filter("vehicle.*")
-
-            ego_transform = carla.Transform(carla.Location(x=120.07566833496, y=8.87075996, z=0.27530714869499207))
-
             blueprints_vehicles = [x for x in blueprints_vehicles if int(x.get_attribute('number_of_wheels')) == 4]
-
-            # set ego vehicle's role name to let CarlaViz know this vehicle is the ego vehicle
-            blueprints_vehicles[0].set_attribute('role_name', 'ego') # or set to 'hero'
-
-            ac1 = carla.command.SpawnActor(blueprints_vehicles[0], ego_transform).then(carla.command.SetAutopilot(carla.command.FutureActor, True, self.tm_port))
-            ac2 = carla.command.SpawnActor(blueprints_vehicles[1], carla.Transform(carla.Location(x=130.07566833496, y=8.87075996, z=0.27530714869499207))).then(carla.command.SetAutopilot(carla.command.FutureActor, True, self.tm_port))
-            batch = [ac1, ac2]
-            # 1.2: remove above
-            results = self.client.apply_batch_sync(batch, True)
+            results = case(spawn_points, blueprints_vehicles, self.tm_port, self.client.apply_batch_sync, self.world)
             print('results', results)
             self.vehicles.append(results[1])
             if not results[0].error:
@@ -393,6 +383,35 @@ class Lidarcamera:
                 self.obstacle.destroy()
             self.client.apply_batch([carla.command.DestroyActor(x.actor_id) for x in self.vehicles])
 
+def egoAndCarDrivingAutoPilot(spawn_points, blueprints_vehicles, tm_port, apply_batch, world):
+    ego_transform = carla.Transform(carla.Location(x=120.07566833496, y=8.87075996, z=0.27530714869499207))
+    vehicle_2_transform = carla.Transform(carla.Location(x=130.07566833496, y=8.87075996, z=0.27530714869499207))
+
+    # set ego vehicle's role name to let CarlaViz know this vehicle is the ego vehicle
+    blueprints_vehicles[0].set_attribute('role_name', 'ego') # or set to 'hero'
+
+    actor1 = carla.command.SpawnActor(blueprints_vehicles[0], ego_transform).then(carla.command.SetAutopilot(carla.command.FutureActor, True, tm_port))
+    actor2 = carla.command.SpawnActor(blueprints_vehicles[1], vehicle_2_transform).then(carla.command.SetAutopilot(carla.command.FutureActor, True, tm_port))
+    batch = [actor1, actor2]
+    
+    results = apply_batch(batch, True)
+    return results
+
+def egoCrashingIntoStationaryCar(spawn_points, blueprints_vehicles, tm_port, apply_batch, world):
+    ego_transform = carla.Transform(carla.Location(x=110.07566833496, y=8.87075996, z=0.27530714869499207))
+    vehicle_2_transform = carla.Transform(carla.Location(x=140.07566833496, y=8.87075996, z=0.27530714869499207))
+
+    # set ego vehicle's role name to let CarlaViz know this vehicle is the ego vehicle
+    blueprints_vehicles[0].set_attribute('role_name', 'ego') # or set to 'hero'
+
+    actor1 = carla.command.SpawnActor(blueprints_vehicles[0], ego_transform)
+    actor2 = carla.command.SpawnActor(blueprints_vehicles[1], vehicle_2_transform)
+    batch = [actor1, actor2]
+    
+    results = apply_batch(batch, True)
+    world.get_actor(results[0].actor_id).set_velocity(carla.Vector3D(20,0,0))
+    return results
+
 if __name__ == "__main__":
     lidarcamera = Lidarcamera()
-    lidarcamera.main()
+    lidarcamera.main(egoCrashingIntoStationaryCar)
