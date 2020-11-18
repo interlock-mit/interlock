@@ -7,6 +7,7 @@ import numpy as np
 import open3d as o3d
 
 FILTER = True
+RECORD = False
 
 class Lidarcamera:
     def __init__(self):
@@ -158,12 +159,7 @@ class Lidarcamera:
             self.count += 1
             xyz_pts = self.points[:,:3]
             print(xyz_pts.shape)
-            # pcd = o3d.geometry.PointCloud()
-            # pcd.points = o3d.utility.Vector3dVector(xyz_pts.astype(np.float64))
-            # o3d.io.write_point_cloud(f"lidar/{data.frame}.ply", pcd)
-
-
-            # pcd = o3d.geometry.PointCloud()
+            
             xyz_filtered = xyz_pts[((xyz_pts[:, 0] > -2) & (xyz_pts[:,0] < 2) & (xyz_pts[:,1] > 0) & (xyz_pts[:,2] > -1.2))]
             # testing other filters
             # xyz_filtered = xyz_pts[(xyz_pts[:,2] > -1)]
@@ -201,7 +197,7 @@ class Lidarcamera:
                 px = point[1] + lidar_loc.x
                 py = point[0] + lidar_loc.y
                 for j, (leftX, rightX, backY, frontY) in enumerate(locs):
-                    if leftX <= px <= rightX and backY <= py <= frontY:
+                    if leftX - .3 <= px <= rightX + .3 and backY - .3 <= py <= frontY + .3:
                         colors[i] = [1, 0, 0]
                         # TODO: make this not 1d 
                         # velocities are relative to the stationary location of the car
@@ -211,10 +207,17 @@ class Lidarcamera:
                         colors[i] = [0, 1, 1]
                         velocities[i] = [0, 0, 0]
 
-            # pcd.colors = o3d.utility.Vector3dVector(colors.astype(np.float64))
+            if self.count % 10 == 0 and RECORD:
 
-            # pcd.points = o3d.utility.Vector3dVector(xyz_filtered.astype(np.float64))
-            # o3d.io.write_point_cloud(f"lidar/{data.frame}_filtered.ply", pcd)
+                pcd = o3d.geometry.PointCloud()
+                pcd.points = o3d.utility.Vector3dVector(xyz_pts.astype(np.float64))
+                o3d.io.write_point_cloud(f"lidar/{data.frame}.ply", pcd)
+
+
+                pcd = o3d.geometry.PointCloud()
+                pcd.colors = o3d.utility.Vector3dVector(colors.astype(np.float64))
+                pcd.points = o3d.utility.Vector3dVector(xyz_filtered.astype(np.float64))
+                o3d.io.write_point_cloud(f"lidar/{data.frame}_filtered.ply", pcd)
             
             self.certificate_result, self.closest_point = interlock(xyz_filtered, velocities, ego_speed)
 
@@ -394,9 +397,9 @@ def egoCrashingIntoStationaryCar(spawn_points, blueprints_vehicles, tm_port, app
     batch = [actor1, actor2]
     
     results = apply_batch(batch, True)
-    world.get_actor(results[0].actor_id).set_target_velocity(carla.Vector3D(10,0,0))
+    world.get_actor(results[0].actor_id).set_target_velocity(carla.Vector3D(5,0,0))
     return results
 
 if __name__ == "__main__":
     lidarcamera = Lidarcamera()
-    lidarcamera.main(egoAndCarDrivingAutoPilot)
+    lidarcamera.main(egoCrashingIntoStationaryCar)
