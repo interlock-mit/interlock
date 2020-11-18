@@ -1,7 +1,7 @@
 import carla
 import random
 from carla_scripts.carla_painter import CarlaPainter
-from LiDAR.interlock import interlock
+from LiDAR.process_points import interlock
 import math
 import numpy as np
 import open3d as o3d
@@ -27,7 +27,7 @@ class Lidarcamera:
         # new
         self.tm = None
         self.vehicles = []
-        self.closest_point = None
+        self.closest_point = float('inf')
         self.count = 0
 
         # degrees
@@ -118,23 +118,6 @@ class Lidarcamera:
         # massage the points into the right shape
         points = np.frombuffer(data.raw_data, dtype=np.dtype('f4'))
         points = np.array(np.reshape(points, (int(points.shape[0] / 4),4)))
-
-        def interlock(points, ego_vel, max_decel = 10):
-            stopping_distance = (ego_vel**2)/(2*max_decel)
-            closest = float('inf')
-            safe = True
-            for point in points:
-                if point[0] > -6 and point[0] < 6:
-                    if not is_safe(point, stopping_distance, 0.5):
-                        safe = False
-                    if point[1] < closest and point[1] > .5:
-                        closest = point[1]
-            return safe, closest
-
-        def is_safe(point, stopping_distance, threshold):
-            return (point[1] < threshold) or (point[1] > stopping_distance)
-
-
 
         # some weird transformations have to happen for the visualizer:
         # flip the x and y coords 
@@ -231,7 +214,7 @@ class Lidarcamera:
                 pcd.points = o3d.utility.Vector3dVector(xyz_filtered.astype(np.float64))
                 o3d.io.write_point_cloud(f"lidar/{data.frame}_filtered.ply", pcd)
                 
-            self.certificate_result, self.closest_point = interlock(xyz_filtered, velocities, ego_speed)
+                self.certificate_result, self.closest_point = interlock(xyz_filtered, velocities, ego_speed)
 
             self.scanned_angle = 0
             self.points = None

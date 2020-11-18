@@ -30,20 +30,25 @@ def create_filtered_point_cloud(filename, new_filename):
 
 def interlock(points, velocities, ego_speed, max_decel = 2): # SI units
     ego_stopping_dist = (ego_speed**2)/(2*max_decel)
+    # print('ego stops at: ', ego_stopping_dist)
+    cur_min = float('inf')
     for i, point in enumerate(points):
-        point_stop_loc = point 
-        if not is_safe(point, ego_stopping_dist, velocities[i]):
-            return False
-    return True
+        point_stop_y = point[1] + (velocities[i][1]**2)/(2*max_decel)
+        # print(point_stop_y)
+        if point[1] < cur_min:
+            cur_min = point[1]
+        if point_stop_y < ego_stopping_dist:
+            return False, cur_min
+    return True, cur_min
 
-def is_safe(point, stopping_distance, vel, max_decel):
-    return (point[1] ) or (point[1] > stopping_distance)
+# def is_safe(point, stopping_distance, vel, max_decel):
+#     return (point[1] ) or (point[1] > stopping_distance)
+if __name__ == "__main__":
+    filename = 'LiDAR/lidar002310.ply'
+    visualize(filename)
 
-filename = 'LiDAR/lidar002310.ply'
-visualize(filename)
+    new_filename = 'LiDAR/filtered-lidar.ply'
+    points = create_filtered_point_cloud(filename, new_filename)
+    visualize(new_filename)
 
-new_filename = 'LiDAR/filtered-lidar.ply'
-points = create_filtered_point_cloud(filename, new_filename)
-visualize(new_filename)
-
-print(interlock(points, 0, -15))
+    print(interlock(points, 0, -15))
