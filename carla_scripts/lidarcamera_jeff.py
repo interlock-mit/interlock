@@ -368,8 +368,9 @@ def egoCrashingIntoWalkingPed(tm_port, apply_batch, world):
     blueprints_vehicles = [x for x in blueprints_vehicles if int(x.get_attribute('number_of_wheels')) == 4]
     blueprints_vehicles[0].set_attribute('role_name', 'ego') # or set to 'hero'
 
-    blueprints_peds = world.get_blueprint_library().filter("walker.*")
-
+    blueprints_peds = [x for x in blueprints_vehicles if int(x.get_attribute('number_of_wheels')) == 2]
+    print([int(x.get_attribute('number_of_wheels')) for x in blueprints_vehicles])
+    print(blueprints_peds)
     actor1 = carla.command.SpawnActor(blueprints_vehicles[0], ego_transform)
     actor2 = carla.command.SpawnActor(blueprints_peds[0], ped_transform)
     batch = [actor1, actor2]
