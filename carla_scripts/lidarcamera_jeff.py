@@ -54,50 +54,7 @@ class Lidarcamera:
         #translate = disp_pts + 0.05
         #out = np.stack((disp_pts, translate), axis=1).tolist()
         self.painter.draw_points(disp_pts.tolist())
-
-    def generate_certificate(self):
-        # assuming at this point the points are ordered such that the first
-        # point in the list is at the rear of the car
-
-        # calc which rows are needed
-        upper_fov = self.blueprint_lidar.get_attribute('upper_fov').as_float()
-        lower_fov = self.blueprint_lidar.get_attribute('lower_fov').as_float()
-
-        n = self.blueprint_lidar.get_attribute('channels').as_int()
-        deg_per_row = (upper_fov - lower_fov) / (n-1)
-        deg_per_pt = 360 / len(self.points[0])
-
-        bot_idx = 31-int((self.certificate_angular_bounds["down"]-lower_fov)/deg_per_row)
-        top_idx = 31-(int((self.certificate_angular_bounds["up"]-lower_fov)/deg_per_row) + 1)
-        left_idx = int((self.certificate_angular_bounds["left"]+180)/deg_per_pt)
-        right_idx = int((self.certificate_angular_bounds["right"]+180)/deg_per_pt)+1
-
-        # the height of the row at the minimum dist
-        self.row_heights = [self.certificate_distance*math.tan(self.d_to_rad(upper_fov-deg_per_row*i)) for i in range(top_idx, bot_idx+1)]
-        self.certificate = [self.points[i][left_idx:right_idx,:3] for i in range(top_idx, bot_idx+1)]
-        # filter thigns that are too close
-        if FILTER:
-            for i in range(len(self.certificate)):
-                self.certificate[i] = self.certificate[i][~(self.certificate[i][:,0]>-self.certificate_distance)]
-        
-        self.display_points(np.vstack(self.certificate), self.lidar.get_location())
-        self.certificate_result = self.check_certificate()
-
-    def check_certificate(self):
-        # transform here will depend on spawn loc
-        for i in range(len(self.certificate)):
-            self.certificate[i][:,0] *= -1  # now forward is positive
-            self.certificate[i][:,1] *= -1  # now right is positive
-            self.certificate[i] = self.certificate[i].tolist()
-        result = interlock(self.certificate_distance, self.lane_bounds["left"],
-                self.lane_bounds["right"], self.lane_bounds["up"], 
-                self.lane_bounds["down"], self.diffs["rl"], self.diffs["ud"],
-                self.diffs["row_dev"], self.row_heights, self.certificate)
-        return result
-
-
    
-
     def angle(self, pt, origin=0):
         if isinstance(pt, carla.Vector3D):
             return math.atan2(pt.y, pt.x)
@@ -158,7 +115,7 @@ class Lidarcamera:
         if self.scanned_angle >= 2:
             self.count += 1
             xyz_pts = self.points[:,:3]
-            print(xyz_pts.shape)
+            # print(xyz_pts.shape)
             
             xyz_filtered = xyz_pts[((xyz_pts[:, 0] > -2) & (xyz_pts[:,0] < 2) & (xyz_pts[:,1] > 0) & (xyz_pts[:,2] > -1.2))]
             # testing other filters
@@ -269,11 +226,8 @@ class Lidarcamera:
             self.tm_port = self.tm.get_port()
             print('tm port is: ', self.tm_port)
             
-            # spawn an ego vehicle
-            spawn_points = self.world.get_map().get_spawn_points()
-            blueprints_vehicles = self.world.get_blueprint_library().filter("vehicle.*")
-            blueprints_vehicles = [x for x in blueprints_vehicles if int(x.get_attribute('number_of_wheels')) == 4]
-            results = case(spawn_points, blueprints_vehicles, self.tm_port, self.client.apply_batch_sync, self.world)
+            # create the specific case
+            results = case(self.tm_port, self.client.apply_batch_sync, self.world)
             print('results', results)
             self.vehicles.append(results[1])
             if not results[0].error:
@@ -371,10 +325,12 @@ class Lidarcamera:
                 self.obstacle.destroy()
             self.client.apply_batch([carla.command.DestroyActor(x.actor_id) for x in self.vehicles])
 
-def egoAndCarDrivingAutoPilot(spawn_points, blueprints_vehicles, tm_port, apply_batch, world):
+def egoAndCarDrivingAutoPilot(tm_port, apply_batch, world):
     ego_transform = carla.Transform(carla.Location(x=120.07566833496, y=8.87075996, z=0.27530714869499207))
     vehicle_2_transform = carla.Transform(carla.Location(x=130.07566833496, y=8.87075996, z=0.27530714869499207))
 
+    blueprints_vehicles = world.get_blueprint_library().filter("vehicle.*")
+    blueprints_vehicles = [x for x in blueprints_vehicles if int(x.get_attribute('number_of_wheels')) == 4]
     # set ego vehicle's role name to let CarlaViz know this vehicle is the ego vehicle
     blueprints_vehicles[0].set_attribute('role_name', 'ego') # or set to 'hero'
 
@@ -385,10 +341,13 @@ def egoAndCarDrivingAutoPilot(spawn_points, blueprints_vehicles, tm_port, apply_
     results = apply_batch(batch, True)
     return results
 
-def egoCrashingIntoStationaryCar(spawn_points, blueprints_vehicles, tm_port, apply_batch, world):
+def egoCrashingIntoStationaryCar(tm_port, apply_batch, world):
     ego_transform = carla.Transform(carla.Location(x=110.07566833496, y=8.87075996, z=0.27530714869499207))
     vehicle_2_transform = carla.Transform(carla.Location(x=160.07566833496, y=8.87075996, z=0.27530714869499207))
 
+
+    blueprints_vehicles = world.get_blueprint_library().filter("vehicle.*")
+    blueprints_vehicles = [x for x in blueprints_vehicles if int(x.get_attribute('number_of_wheels')) == 4]
     # set ego vehicle's role name to let CarlaViz know this vehicle is the ego vehicle
     blueprints_vehicles[0].set_attribute('role_name', 'ego') # or set to 'hero'
 
@@ -400,6 +359,27 @@ def egoCrashingIntoStationaryCar(spawn_points, blueprints_vehicles, tm_port, app
     world.get_actor(results[0].actor_id).set_target_velocity(carla.Vector3D(5,0,0))
     return results
 
+
+def egoCrashingIntoWalkingPed(tm_port, apply_batch, world):
+    ego_transform = carla.Transform(carla.Location(x=110.07566833496, y=8.87075996, z=0.27530714869499207))
+    ped_transform = carla.Transform(carla.Location(x=160.07566833496, y=8.87075996, z=0.27530714869499207))
+
+    blueprints_vehicles = world.get_blueprint_library().filter("vehicle.*")
+    blueprints_vehicles = [x for x in blueprints_vehicles if int(x.get_attribute('number_of_wheels')) == 4]
+    blueprints_vehicles[0].set_attribute('role_name', 'ego') # or set to 'hero'
+
+    blueprints_peds = world.get_blueprint_library().filter("walker.*")
+
+    actor1 = carla.command.SpawnActor(blueprints_vehicles[0], ego_transform)
+    actor2 = carla.command.SpawnActor(blueprints_peds[0], ped_transform)
+    batch = [actor1, actor2]
+    
+    results = apply_batch(batch, True)
+    world.get_actor(results[0].actor_id).set_target_velocity(carla.Vector3D(5,0,0))
+    world.get_actor(results[1].actor_id).set_target_velocity(carla.Vector3D(0,3,0))
+
+    return results
+
 if __name__ == "__main__":
     lidarcamera = Lidarcamera()
-    lidarcamera.main(egoCrashingIntoStationaryCar)
+    lidarcamera.main(egoCrashingIntoWalkingPed)
