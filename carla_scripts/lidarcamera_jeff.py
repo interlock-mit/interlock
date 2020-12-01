@@ -364,13 +364,12 @@ def egoCrashingIntoWalkingPed(tm_port, apply_batch, world):
     ego_transform = carla.Transform(carla.Location(x=110.07566833496, y=8.87075996, z=0.27530714869499207))
     ped_transform = carla.Transform(carla.Location(x=160.07566833496, y=8.87075996, z=0.27530714869499207))
 
-    blueprints_vehicles = world.get_blueprint_library().filter("vehicle.*")
-    blueprints_vehicles = [x for x in blueprints_vehicles if int(x.get_attribute('number_of_wheels')) == 4]
+    blueprints = world.get_blueprint_library().filter("vehicle.*")
+    blueprints_vehicles = [x for x in blueprints if int(x.get_attribute('number_of_wheels')) == 4]
     blueprints_vehicles[0].set_attribute('role_name', 'ego') # or set to 'hero'
 
-    blueprints_peds = [x for x in blueprints_vehicles if int(x.get_attribute('number_of_wheels')) == 2]
-    print([int(x.get_attribute('number_of_wheels')) for x in blueprints_vehicles])
-    print(blueprints_peds)
+    blueprints_peds = [x for x in blueprints if int(x.get_attribute('number_of_wheels')) == 2]
+
     actor1 = carla.command.SpawnActor(blueprints_vehicles[0], ego_transform)
     actor2 = carla.command.SpawnActor(blueprints_peds[0], ped_transform)
     batch = [actor1, actor2]
