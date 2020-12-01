@@ -362,7 +362,7 @@ def egoCrashingIntoStationaryCar(tm_port, apply_batch, world):
 
 def egoCrashingIntoWalkingPed(tm_port, apply_batch, world):
     ego_transform = carla.Transform(carla.Location(x=110.07566833496, y=8.87075996, z=0.27530714869499207))
-    ped_transform = carla.Transform(carla.Location(x=160.07566833496, y=8.87075996, z=0.27530714869499207))
+    ped_transform = carla.Transform(carla.Location(x=160.07566833496, y=2.87075996, z=0.27530714869499207), carla.Rotation(0, 90, 0))
 
     blueprints = world.get_blueprint_library().filter("vehicle.*")
     blueprints_vehicles = [x for x in blueprints if int(x.get_attribute('number_of_wheels')) == 4]
@@ -376,7 +376,8 @@ def egoCrashingIntoWalkingPed(tm_port, apply_batch, world):
     
     results = apply_batch(batch, True)
     world.get_actor(results[0].actor_id).set_target_velocity(carla.Vector3D(5,0,0))
-    world.get_actor(results[1].actor_id).set_target_velocity(carla.Vector3D(0,3,0))
+    world.get_actor(results[1].actor_id).apply_control(carla.VehicleControl(throttle=0, brake=0))
+    world.get_actor(results[1].actor_id).set_target_velocity(carla.Vector3D(5,0,))
 
     return results
 
