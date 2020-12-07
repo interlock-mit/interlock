@@ -375,9 +375,9 @@ def egoCrashingIntoWalkingPed(tm_port, apply_batch, world):
     batch = [actor1, actor2]
     
     results = apply_batch(batch, True)
-    world.get_actor(results[0].actor_id).set_target_velocity(carla.Vector3D(5,0,0))
+    world.get_actor(results[0].actor_id).enable_constant_velocity(carla.Vector3D(5,0,0))
     world.get_actor(results[1].actor_id).apply_control(carla.VehicleControl(throttle=0, brake=0))
-    world.get_actor(results[1].actor_id).set_target_velocity(carla.Vector3D(5,0,))
+    world.get_actor(results[1].actor_id).enable_constant_velocity(carla.Vector3D(5,0,))
 
     return results
 
