@@ -381,6 +381,23 @@ def egoCrashingIntoWalkingPed(tm_port, apply_batch, world):
 
     return results
 
+def otherLane(tm_port, apply_batch, world):
+    ego_transform = carla.Transform(carla.Location(x=110.07566833496, y=8.87075996, z=0.27530714869499207))
+    vehicle_2_transform = carla.Transform(carla.Location(x=160.07566833496, y=4.87075996, z=0.27530714869499207))
+
+    blueprints = world.get_blueprint_library().filter("vehicle.*")
+    blueprints_vehicles = [x for x in blueprints if int(x.get_attribute('number_of_wheels')) == 4]
+    blueprints_vehicles[0].set_attribute('role_name', 'ego') # or set to 'hero'
+
+    actor1 = carla.command.SpawnActor(blueprints_vehicles[0], ego_transform)
+    actor2 = carla.command.SpawnActor(blueprints_vehicles[1], vehicle_2_transform)
+    batch = [actor1, actor2]
+    
+    results = apply_batch(batch, True)
+    world.get_actor(results[0].actor_id).set_target_velocity(carla.Vector3D(5,0,0))
+
+    return results
+
 if __name__ == "__main__":
     lidarcamera = Lidarcamera()
-    lidarcamera.main(egoCrashingIntoWalkingPed)
+    lidarcamera.main(otherLane)
