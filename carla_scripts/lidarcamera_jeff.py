@@ -180,6 +180,7 @@ class Lidarcamera:
 
             self.scanned_angle = 0
             self.points = None
+        self.callback(self.world)
 
 
 
@@ -227,7 +228,8 @@ class Lidarcamera:
             print('tm port is: ', self.tm_port)
             
             # create the specific case
-            results = case(self.tm_port, self.client.apply_batch_sync, self.world)
+            results, callback = case(self.tm_port, self.client.apply_batch_sync, self.world)
+            self.callback = callback
             print('results', results)
             self.vehicles.append(results[1])
             if not results[0].error:
@@ -297,6 +299,13 @@ class Lidarcamera:
                 locs.append([loc.x-self.certificate_distance, loc.y, loc.z + 10.0])
 
                 strs.append("Certificate GOOD" if self.certificate_result else "Certificate BAD")
+                if not self.certificate_result:
+                    # print('brake')
+                    # vs = [self.world.get_actor(x.actor_id) for x in self.vehicles]
+
+                    # print([v.get_velocity().x for v in vs])
+                    self.world.get_actor(self.ego_id).apply_control(carla.VehicleControl(brake=1.0))
+
                 locs.append([loc.x-5, loc.y-5, loc.z + 20.0])
                 self.painter.draw_texts(strs, locs, size=20)
                 ##@trajectories[0].append([ego_location.x, ego_location.y, ego_location.z])
@@ -339,7 +348,7 @@ def egoAndCarDrivingAutoPilot(tm_port, apply_batch, world):
     batch = [actor1, actor2]
     
     results = apply_batch(batch, True)
-    return results
+    return results, lambda x: x
 
 def egoCrashingIntoStationaryCar(tm_port, apply_batch, world):
     ego_transform = carla.Transform(carla.Location(x=110.07566833496, y=8.87075996, z=0.27530714869499207))
@@ -357,7 +366,7 @@ def egoCrashingIntoStationaryCar(tm_port, apply_batch, world):
     
     results = apply_batch(batch, True)
     world.get_actor(results[0].actor_id).set_target_velocity(carla.Vector3D(5,0,0))
-    return results
+    return results, lambda x: x
 
 
 def egoCrashingIntoWalkingPed(tm_port, apply_batch, world):
@@ -375,11 +384,13 @@ def egoCrashingIntoWalkingPed(tm_port, apply_batch, world):
     batch = [actor1, actor2]
     
     results = apply_batch(batch, True)
-    world.get_actor(results[0].actor_id).enable_constant_velocity(carla.Vector3D(5,0,0))
-    world.get_actor(results[1].actor_id).apply_control(carla.VehicleControl(throttle=0, brake=0))
-    world.get_actor(results[1].actor_id).enable_constant_velocity(carla.Vector3D(5,0,))
+    world.get_actor(results[0].actor_id).set_target_velocity(carla.Vector3D(20,0,0))
+    world.get_actor(results[1].actor_id).enable_constant_velocity(carla.Vector3D(2,0,0))
 
-    return results
+    def callback(x):
+        x.get_actor(results[1].actor_id).set_target_velocity(carla.Vector3D(2,0,0))
+
+    return results, callback
 
 def otherLane(tm_port, apply_batch, world):
     ego_transform = carla.Transform(carla.Location(x=110.07566833496, y=8.87075996, z=0.27530714869499207))
@@ -396,8 +407,8 @@ def otherLane(tm_port, apply_batch, world):
     results = apply_batch(batch, True)
     world.get_actor(results[0].actor_id).set_target_velocity(carla.Vector3D(5,0,0))
 
-    return results
+    return results, lambda x: x
 
 if __name__ == "__main__":
     lidarcamera = Lidarcamera()
-    lidarcamera.main(otherLane)
+    lidarcamera.main(egoCrashingIntoWalkingPed)
