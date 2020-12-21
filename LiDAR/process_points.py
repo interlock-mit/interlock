@@ -28,8 +28,8 @@ def create_filtered_point_cloud(filename, new_filename):
     return points_in_lane
 
 
-def interlock(points, velocities, ego_speed, max_decel = 9): # SI units
-    ego_stopping_dist = (ego_speed**2)/(2*max_decel)
+def interlock(points, velocities, ego_speed, timestep_delta, max_decel = 9): # SI units
+    ego_stopping_dist = (ego_speed**2)/(2*max_decel) + timestep_delta * ego_speed
     # print('ego stops at: ', ego_stopping_dist)
     cur_min = float('inf')
     for i, point in enumerate(points):

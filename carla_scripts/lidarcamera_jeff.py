@@ -8,6 +8,7 @@ import open3d as o3d
 
 FILTER = True
 RECORD = False
+TIMESTEP_DELTA = .05
 
 class Lidarcamera:
     def __init__(self):
@@ -177,7 +178,7 @@ class Lidarcamera:
                 pcd.points = o3d.utility.Vector3dVector(xyz_filtered.astype(np.float64))
                 o3d.io.write_point_cloud(f"lidar/{data.frame}_filtered.ply", pcd)
             
-            self.certificate_result, self.closest_point = interlock(xyz_filtered, velocities, ego_speed)
+            self.certificate_result, self.closest_point = interlock(xyz_filtered, velocities, ego_speed, TIMESTEP_DELTA)
 
             self.scanned_angle = 0
             self.points = None
@@ -221,7 +222,7 @@ class Lidarcamera:
             previous_settings = self.world.get_settings()
             self.world.apply_settings(carla.WorldSettings(
                 synchronous_mode=True,
-                fixed_delta_seconds=1.0 / 20.0))
+                fixed_delta_seconds=TIMESTEP_DELTA))
             self.tm = self.client.get_trafficmanager()
             self.tm.set_synchronous_mode(True)
             self.tm_port = self.tm.get_port()
