@@ -251,14 +251,14 @@ class Lidarcamera:
             #     return
 
             # attach a camera and a lidar to the ego vehicle
-            #blueprint_camera = self.world.get_blueprint_library().find('sensor.camera.rgb')
+            blueprint_camera = self.world.get_blueprint_library().find('sensor.camera.rgb')
             #blueprint_camera.set_attribute('image_size_x', '640')
             #blueprint_camera.set_attribute('image_size_y', '480')
-            #blueprint_camera.set_attribute('fov', '110')
+            blueprint_camera.set_attribute('fov', '110')
             #blueprint_camera.set_attribute('sensor_tick', '0.1')
-            #transform_camera = carla.Transform(carla.Location(x=.3, z=1.8))
-            #self.camera = self.world.spawn_actor(blueprint_camera, transform_camera, attach_to=self.ego_vehicle)
-            #self.camera.listen(lambda data: self.camera_listener(data))
+            transform_camera = carla.Transform(carla.Location(x=.0, z=1.8))
+            self.camera = self.world.spawn_actor(blueprint_camera, transform_camera, attach_to=self.ego_vehicle)
+            self.camera.listen(lambda data: self.camera_listener(data))
 
             blueprint_lidar = self.world.get_blueprint_library().find('sensor.lidar.ray_cast')
             # these specs follow the velodyne vlp32 spec
