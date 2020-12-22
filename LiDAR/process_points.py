@@ -33,11 +33,16 @@ def interlock(points, velocities, ego_speed, timestep_delta, max_decel = 9): # S
     # print('ego stops at: ', ego_stopping_dist)
     cur_min = float('inf')
     for i, point in enumerate(points):
-        point_stop_y = point[1] + (velocities[i][1]**2)/(2*max_decel)
+        point_stop_y = min(point[1] + (velocities[i][0]**2)/(2*max_decel), point[1] + (velocities[i][0] * ego_speed / max_decel))
         # print(point_stop_y)
+        
         if point[1] < cur_min:
             cur_min = point[1]
         if point_stop_y < ego_stopping_dist:
+            if point[1] + (velocities[i][0]**2)/(2*max_decel) <= point[1] + (velocities[i][0] * ego_speed / max_decel):
+                print('case forward', velocities[i])
+            else:
+                print('case backward', velocities[i])
             return False, cur_min
     return True, cur_min
 

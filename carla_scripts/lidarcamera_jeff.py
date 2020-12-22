@@ -305,8 +305,8 @@ class Lidarcamera:
                     print('brake at ', self.timestep)
                     # vs = [self.world.get_actor(x.actor_id) for x in self.vehicles]
 
-                    # print([v.get_velocity().x for v in vs])
-                    # self.world.get_actor(self.ego_id).apply_control(carla.VehicleControl(brake=1.0))
+                    # print(self.world.get_actor(self.ego_id).get_velocity().x)
+                    self.world.get_actor(self.ego_id).apply_control(carla.VehicleControl(brake=1.0))
 
                 locs.append([loc.x-5, loc.y-5, loc.z + 20.0])
                 self.painter.draw_texts(strs, locs, size=20)
@@ -435,12 +435,12 @@ def egoCrashingIntoBrakingCar(tm_port, apply_batch, world):
     batch = [actor1, actor2]
     
     results = apply_batch(batch, True)
-    world.get_actor(results[0].actor_id).set_target_velocity(carla.Vector3D(8,0,0))
-    world.get_actor(results[1].actor_id).set_target_velocity(carla.Vector3D(8,0,0))
+    world.get_actor(results[0].actor_id).set_target_velocity(carla.Vector3D(15,0,0))
+    world.get_actor(results[1].actor_id).set_target_velocity(carla.Vector3D(15,0,0))
 
     def callback(my_world, timestep):
-        if timestep > 100:
-            world.get_actor(results[1].actor_id).apply_control(carla.VehicleControl(brake=1.0))
+        if timestep > 50:
+            world.get_actor(results[1].actor_id).apply_control(carla.VehicleControl(brake=.8))
 
     return results, callback
 
@@ -462,7 +462,7 @@ def egoCrashingIntoPedInLane(tm_port, apply_batch, world):
     batch = [actor1, actor2]
     
     results = apply_batch(batch, True)
-    world.get_actor(results[0].actor_id).set_target_velocity(carla.Vector3D(8,0,0))
+    world.get_actor(results[0].actor_id).set_target_velocity(carla.Vector3D(15,0,0))
     world.get_actor(results[1].actor_id).set_target_velocity(carla.Vector3D(2,0,0))
 
     def callback(my_world, timestep):
@@ -470,6 +470,27 @@ def egoCrashingIntoPedInLane(tm_port, apply_batch, world):
         my_world.get_actor(results[1].actor_id).set_target_velocity(carla.Vector3D(2,0,0))
 
     return results, callback
+
+def egoCrashingIntoBackwardCar(tm_port, apply_batch, world):
+    ego_transform = carla.Transform(carla.Location(x=110.07566833496, y=8.87075996, z=0.27530714869499207))
+    vehicle_2_transform = carla.Transform(carla.Location(x=160.07566833496, y=8.87075996, z=0.27530714869499207))
+
+
+    blueprints_vehicles = world.get_blueprint_library().filter("vehicle.*")
+    blueprints_vehicles = [x for x in blueprints_vehicles if int(x.get_attribute('number_of_wheels')) == 4]
+    # set ego vehicle's role name to let CarlaViz know this vehicle is the ego vehicle
+    blueprints_vehicles[0].set_attribute('role_name', 'ego') # or set to 'hero'
+
+    actor1 = carla.command.SpawnActor(blueprints_vehicles[0], ego_transform)
+    actor2 = carla.command.SpawnActor(blueprints_vehicles[1], vehicle_2_transform)
+    batch = [actor1, actor2]
+    
+    results = apply_batch(batch, True)
+    world.get_actor(results[0].actor_id).set_target_velocity(carla.Vector3D(15,0,0))
+    world.get_actor(results[1].actor_id).set_target_velocity(carla.Vector3D(-5,0,0))
+
+    return results, do_nothing
+
 
 if __name__ == "__main__":
     lidarcamera = Lidarcamera()
