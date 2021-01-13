@@ -18,6 +18,15 @@ def dist(vec1, vec2):
 def loc(pos, vel, t):
     return (pos[0]+t*vel[0], pos[1]+t*vel[1], pos[2]+t*vel[2])
 
+def loc_range(pos, vel, t, max_accel, max_decel):
+    x = pos[0] + t*vel[0]
+    x_range = (x + 0.5*max_accel[0]*(t**2), x + 0.5*max_decel[0]*(t**2))
+    y = pos[1] + t*vel[1]
+    y_range = (y + 0.5*max_accel[1]*(t**2), y + 0.5*max_decel[1]*(t**2))
+    z = pos[2] + t*vel[2]
+    z_range = (z + 0.5*max_accel[2]*(t**2), z + 0.5*max_decel[2]*(t**2))
+    return x_range, y_range, z_range
+
 def avg_vel(object_points):
     sum_vel = (0, 0, 0)
     for (pos, vel) in object_points:
