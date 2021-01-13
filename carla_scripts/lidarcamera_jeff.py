@@ -8,6 +8,7 @@ import open3d as o3d
 
 FILTER = True
 RECORD = False
+TIMESTEP_DELTA = .05
 
 class Lidarcamera:
     def __init__(self):
@@ -24,6 +25,7 @@ class Lidarcamera:
         self.blueprint_lidar = None
         self.lidar_certificate = None
         self.certificate_result = True
+        self.timestep = None
 
         # new
         self.tm = None
@@ -176,11 +178,10 @@ class Lidarcamera:
                 pcd.points = o3d.utility.Vector3dVector(xyz_filtered.astype(np.float64))
                 o3d.io.write_point_cloud(f"lidar/{data.frame}_filtered.ply", pcd)
             
-            self.certificate_result, self.closest_point = interlock(xyz_filtered, velocities, ego_speed)
+            self.certificate_result, self.closest_point = interlock(xyz_filtered, velocities, ego_speed, TIMESTEP_DELTA)
 
             self.scanned_angle = 0
             self.points = None
-        self.callback(self.world)
 
 
 
@@ -221,7 +222,7 @@ class Lidarcamera:
             previous_settings = self.world.get_settings()
             self.world.apply_settings(carla.WorldSettings(
                 synchronous_mode=True,
-                fixed_delta_seconds=1.0 / 20.0))
+                fixed_delta_seconds=TIMESTEP_DELTA))
             self.tm = self.client.get_trafficmanager()
             self.tm.set_synchronous_mode(True)
             self.tm_port = self.tm.get_port()
@@ -239,6 +240,7 @@ class Lidarcamera:
                 print('spawn ego error, exit')
                 self.ego_vehicle = None
                 return
+            self.timestep = 0
 
             # batch = [carla.command.SpawnActor(blueprints_vehicles[0], ego_transform).then(carla.command.SetAutopilot(carla.command.FutureActor, False))]
             # results = self.client.apply_batch_sync(batch, False)
@@ -300,10 +302,10 @@ class Lidarcamera:
 
                 strs.append("Certificate GOOD" if self.certificate_result else "Certificate BAD")
                 if not self.certificate_result:
-                    # print('brake')
+                    print('brake at ', self.timestep)
                     # vs = [self.world.get_actor(x.actor_id) for x in self.vehicles]
 
-                    # print([v.get_velocity().x for v in vs])
+                    # print(self.world.get_actor(self.ego_id).get_velocity().x)
                     self.world.get_actor(self.ego_id).apply_control(carla.VehicleControl(brake=1.0))
 
                 locs.append([loc.x-5, loc.y-5, loc.z + 20.0])
@@ -317,6 +319,11 @@ class Lidarcamera:
                 #ego_velocity = ego_vehicle.get_velocity()
                 #velocity_str = "{:.2f}, ".format(ego_velocity.x) + "{:.2f}".format(ego_velocity.y) \
                 #        + ", {:.2f}".format(ego_velocity.z)
+                self.callback(self.world, self.timestep)
+                self.timestep += 1
+                if self.timestep == 100:
+                    print('now')
+
 
 
         finally:
@@ -334,6 +341,10 @@ class Lidarcamera:
                 self.obstacle.destroy()
             self.client.apply_batch([carla.command.DestroyActor(x.actor_id) for x in self.vehicles])
 
+
+def do_nothing(world, timestep):
+    return
+
 def egoAndCarDrivingAutoPilot(tm_port, apply_batch, world):
     ego_transform = carla.Transform(carla.Location(x=120.07566833496, y=8.87075996, z=0.27530714869499207))
     vehicle_2_transform = carla.Transform(carla.Location(x=130.07566833496, y=8.87075996, z=0.27530714869499207))
@@ -348,7 +359,7 @@ def egoAndCarDrivingAutoPilot(tm_port, apply_batch, world):
     batch = [actor1, actor2]
     
     results = apply_batch(batch, True)
-    return results, lambda x: x
+    return results, do_nothing
 
 def egoCrashingIntoStationaryCar(tm_port, apply_batch, world):
     ego_transform = carla.Transform(carla.Location(x=110.07566833496, y=8.87075996, z=0.27530714869499207))
@@ -365,13 +376,13 @@ def egoCrashingIntoStationaryCar(tm_port, apply_batch, world):
     batch = [actor1, actor2]
     
     results = apply_batch(batch, True)
-    world.get_actor(results[0].actor_id).set_target_velocity(carla.Vector3D(5,0,0))
-    return results, lambda x: x
+    world.get_actor(results[0].actor_id).set_target_velocity(carla.Vector3D(10,0,0))
+    return results, do_nothing
 
 
-def egoCrashingIntoWalkingPed(tm_port, apply_batch, world):
+def egoCrashingIntoBikingPed(tm_port, apply_batch, world):
     ego_transform = carla.Transform(carla.Location(x=110.07566833496, y=8.87075996, z=0.27530714869499207))
-    ped_transform = carla.Transform(carla.Location(x=160.07566833496, y=2.87075996, z=0.27530714869499207), carla.Rotation(0, 90, 0))
+    ped_transform = carla.Transform(carla.Location(x=160.07566833496, y=3.87075996, z=0.27530714869499207), carla.Rotation(0, 77, 0))
 
     blueprints = world.get_blueprint_library().filter("vehicle.*")
     blueprints_vehicles = [x for x in blueprints if int(x.get_attribute('number_of_wheels')) == 4]
@@ -387,8 +398,8 @@ def egoCrashingIntoWalkingPed(tm_port, apply_batch, world):
     world.get_actor(results[0].actor_id).set_target_velocity(carla.Vector3D(20,0,0))
     world.get_actor(results[1].actor_id).enable_constant_velocity(carla.Vector3D(2,0,0))
 
-    def callback(x):
-        x.get_actor(results[1].actor_id).set_target_velocity(carla.Vector3D(2,0,0))
+    def callback(my_world, timestep):
+        my_world.get_actor(results[1].actor_id).set_target_velocity(carla.Vector3D(2,0,0))
 
     return results, callback
 
@@ -407,8 +418,86 @@ def otherLane(tm_port, apply_batch, world):
     results = apply_batch(batch, True)
     world.get_actor(results[0].actor_id).set_target_velocity(carla.Vector3D(5,0,0))
 
-    return results, lambda x: x
+    return results, do_nothing
+
+def egoCrashingIntoBrakingCar(tm_port, apply_batch, world):
+    ego_transform = carla.Transform(carla.Location(x=140.07566833496, y=8.87075996, z=0.27530714869499207))
+    vehicle_2_transform = carla.Transform(carla.Location(x=160.07566833496, y=8.87075996, z=0.27530714869499207))
+
+
+    blueprints_vehicles = world.get_blueprint_library().filter("vehicle.*")
+    blueprints_vehicles = [x for x in blueprints_vehicles if int(x.get_attribute('number_of_wheels')) == 4]
+    # set ego vehicle's role name to let CarlaViz know this vehicle is the ego vehicle
+    blueprints_vehicles[0].set_attribute('role_name', 'ego') # or set to 'hero'
+
+    actor1 = carla.command.SpawnActor(blueprints_vehicles[0], ego_transform)
+    actor2 = carla.command.SpawnActor(blueprints_vehicles[1], vehicle_2_transform)
+    batch = [actor1, actor2]
+    
+    results = apply_batch(batch, True)
+    world.get_actor(results[0].actor_id).set_target_velocity(carla.Vector3D(15,0,0))
+    world.get_actor(results[1].actor_id).set_target_velocity(carla.Vector3D(15,0,0))
+
+    def callback(my_world, timestep):
+        if timestep > 50:
+            world.get_actor(results[1].actor_id).apply_control(carla.VehicleControl(brake=.8))
+            print(world.get_actor(results[1].actor_id).get_location().x)
+        
+
+    return results, callback
+
+def egoCrashingIntoPedInLane(tm_port, apply_batch, world):
+    ego_transform = carla.Transform(carla.Location(x=110.07566833496, y=8.87075996, z=0.27530714869499207))
+    ped_transform = carla.Transform(carla.Location(x=170.07566833496, y=8.87075996, z=1.27530714869499207))
+
+
+    blueprints_vehicles = world.get_blueprint_library().filter("vehicle.*")
+    blueprints_vehicles = [x for x in blueprints_vehicles if int(x.get_attribute('number_of_wheels')) == 4]
+    # set ego vehicle's role name to let CarlaViz know this vehicle is the ego vehicle
+    blueprints_vehicles[0].set_attribute('role_name', 'ego') # or set to 'hero'
+
+    actor1 = carla.command.SpawnActor(blueprints_vehicles[0], ego_transform)
+
+    blueprints_peds = world.get_blueprint_library().filter("walker.*")
+
+    actor2 = carla.command.SpawnActor(blueprints_peds[0], ped_transform)
+    batch = [actor1, actor2]
+    
+    results = apply_batch(batch, True)
+    world.get_actor(results[0].actor_id).set_target_velocity(carla.Vector3D(15,0,0))
+    world.get_actor(results[1].actor_id).set_target_velocity(carla.Vector3D(2,0,0))
+
+    def callback(my_world, timestep):
+        control = carla.WalkerControl()
+        control.speed = 1
+        control.direction.x = -1
+        control.direction.y = 0
+        control.direction.z = 0
+        world.get_actor(results[1].actor_id).apply_control(control)
+
+    return results, callback
+
+def egoCrashingIntoBackwardCar(tm_port, apply_batch, world):
+    ego_transform = carla.Transform(carla.Location(x=110.07566833496, y=8.87075996, z=0.27530714869499207))
+    vehicle_2_transform = carla.Transform(carla.Location(x=160.07566833496, y=8.87075996, z=0.27530714869499207))
+
+
+    blueprints_vehicles = world.get_blueprint_library().filter("vehicle.*")
+    blueprints_vehicles = [x for x in blueprints_vehicles if int(x.get_attribute('number_of_wheels')) == 4]
+    # set ego vehicle's role name to let CarlaViz know this vehicle is the ego vehicle
+    blueprints_vehicles[0].set_attribute('role_name', 'ego') # or set to 'hero'
+
+    actor1 = carla.command.SpawnActor(blueprints_vehicles[0], ego_transform)
+    actor2 = carla.command.SpawnActor(blueprints_vehicles[1], vehicle_2_transform)
+    batch = [actor1, actor2]
+    
+    results = apply_batch(batch, True)
+    world.get_actor(results[0].actor_id).set_target_velocity(carla.Vector3D(15,0,0))
+    world.get_actor(results[1].actor_id).set_target_velocity(carla.Vector3D(-5,0,0))
+
+    return results, do_nothing
+
 
 if __name__ == "__main__":
     lidarcamera = Lidarcamera()
-    lidarcamera.main(egoCrashingIntoWalkingPed)
+    lidarcamera.main(egoCrashingIntoPedInLane)
