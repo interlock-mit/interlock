@@ -35,13 +35,21 @@ def avg_vel(object_points):
     return (sum_vel[0]/n, sum_vel[1]/n, sum_vel[2]/n)
 
 def max_diff_vel(object_points):
-    x_vels = set([vel[0] for (pos, vel) in object_points])
-    y_vels = set([vel[1] for (pos, vel) in object_points])
-    z_vels = set([vel[2] for (pos, vel) in object_points])
-    x_diff = max(x_vels) - min(x_vels)
-    y_diff = max(y_vels) - min(y_vels)
-    z_diff = max(z_vels) - min(z_vels)
-    return (x_diff, y_diff, z_diff)
+    min_x, max_x, min_y, max_y, min_z, max_z = (None)*6
+    for (pos, vel) in object_points:
+        if min_x is None or vel[0] < min_x:
+            min_x = vel[0]
+        if max_x is None or vel[0] > max_x:
+            max_x = vel[0]
+        if min_y is None or vel[1] < min_y:
+            min_y = vel[1]
+        if max_y is None or vel[1] > max_y:
+            max_y = vel[1]
+        if min_z is None or vel[2] < min_z:
+            min_z = vel[2]
+        if max_z is None or vel[2] > max_z:
+            max_z = vel[2]
+    return (max_x - min_x, max_y - min_y, max_z - min_z)
 
 def object_same_speed(object_points, epsilon):
     ''' epsilon is the maximum variability in velocity we are willing to tolerate '''
