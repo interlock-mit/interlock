@@ -15,7 +15,29 @@ def mult(vec, factor):
     return (vec[0] * factor, vec[1] * factor, vec[2] * factor)
 def dist(vec1, vec2):
     return ((vec1[0]-vec2[0])**2 + (vec1[1]-vec2[1])**2 + (vec1[2]-vec2[2])**2)**.5
+def loc(pos, vel, t):
+    return (pos[0]+t*vel[0], pos[1]+t*vel[1], pos[2]+t*vel[2])
 
+def avg_vel(object_points):
+    sum_vel = (0, 0, 0)
+    for (pos, vel) in object_points:
+        sum_vel = (sum_vel[0] + vel[0], sum_vel[1] + vel[1], sum_vel[2] + vel[2])
+    n = len(object_points)
+    return (sum_vel[0]/n, sum_vel[1]/n, sum_vel[2]/n)
+
+def max_diff_vel(object_points):
+    x_vels = set([vel[0] for (pos, vel) in object_points])
+    y_vels = set([vel[1] for (pos, vel) in object_points])
+    z_vels = set([vel[2] for (pos, vel) in object_points])
+    x_diff = max(x_vels) - min(x_vels)
+    y_diff = max(y_vels) - min(y_vels)
+    z_diff = max(z_vels) - min(z_vels)
+    return (x_diff, y_diff, z_diff)
+
+def object_same_speed(object_points, epsilon):
+    ''' epsilon is the maximum variability in velocity we are willing to tolerate '''
+    (x_diff, y_diff, z_diff) = max_diff_vel(object_points)
+    return x_diff < epsilon and y_diff < epsilon and z_diff < epsilon
 
 def is_safe(ego_pos, ego_vel, other_pos, other_vel, timestep=DEFAULT_TIMESTEP, min_dist=MIN_DIST, max_decel=MAX_DECEL):
     cur_speed = dist(ego_vel, (0,0,0))
