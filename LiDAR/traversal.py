@@ -1,4 +1,4 @@
-cell_size = 1
+cell_size = .5
 
 def get_traversal_order(points):
     """
@@ -33,7 +33,7 @@ def get_traversal_order(points):
         idxs = get_cell_idx(point[0], 0), get_cell_idx(point[1], 1), get_cell_idx(point[2], 2)
         # populates a cell with a point if the point is in the cell; max one point per cell
         density[idxs[0]][idxs[1]][idxs[2]] = point 
-    print(density)
+    # print(density)
 
     def get_neighbors(point):
         # yields the points near the given point by examining neighboring cells
@@ -86,6 +86,17 @@ def generate_points(lower, upper, is_rand = False):
     return pts
 
 
+def process_and_remove_outliers(pos_vels, remove=True):
+    axis = 1
+    filter_dist = 3
+    points = sorted([tuple(pos) for pos, vel, pic_pos in pos_vels], key=lambda x: x[axis])
+    if remove:
+        median = points[len(points)//2][axis]
+        return list(filter(lambda x: abs(x[axis] - median) < filter_dist, points))
+    return points
+
+
+
 if __name__ == "__main__":
 
     import pickle
@@ -93,26 +104,26 @@ if __name__ == "__main__":
     import open3d
     pcd = open3d.geometry.PointCloud()
     pcd_points = None
-    with open("car_22400.pkl", 'rb') as pklfile: 
+    with open("car_106761.pkl", 'rb') as pklfile: 
         # keys: [1, 2, 7, 123, 155, 163, 222, 246, 261, 309, 335, 398, 423, 499, 500, 510, 518, 519, 521, 531, 568, 569, 573, 575, 580, 586, 593, 608, 632, 634, 684, 689, 692, 693, 694, 695]
         obj = pickle.load(pklfile)
         print(obj.keys())
         for key in obj:
             print(key)
-            pos_vels = obj[key]
-            points = [tuple(pos) for vel, pos in pos_vels]
-            print(len(points))
-            np_points = np.array([pos for vel, pos in pos_vels]) 
+            pos_vels = obj[1024]
+            pos = remove_outliers(pos_vels)
+            points = [tuple(pos) for pos in pos]
+            np_points = np.array([pos for pos in pos]) 
             if len(points):
                 pcd_points = np.concatenate((pcd_points, np_points), axis=0) if pcd_points is not None else np_points
             # print(np_points.shape, pcd_points.shape)
-                # cur_pcd = open3d.geometry.PointCloud()
-                # cur_pcd.points = open3d.utility.Vector3dVector(np_points)
-                # open3d.visualization.draw_geometries([cur_pcd])
+                cur_pcd = open3d.geometry.PointCloud()
+                cur_pcd.points = open3d.utility.Vector3dVector(np_points)
+                open3d.visualization.draw_geometries([cur_pcd])
 
 
-                # print(get_traversal_order(points))
-        
+                print(get_traversal_order(points))
+            break
 
 
     print(np_points.shape)

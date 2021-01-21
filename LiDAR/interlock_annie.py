@@ -1,4 +1,4 @@
-from plyfile import PlyData, PlyElement
+# from plyfile import PlyData, PlyElement
 import numpy as np
 import open3d as o3d
 from collections import defaultdict
@@ -18,8 +18,8 @@ def dist(point_a, point_b):
 
 def check_traversal_order(traversal_orders, pos_threshold):
     for traversal_order in traversal_orders:
-        seen = {obj[0][0]}
-        for (point_a, point_b) in traversal_order:
+        seen = {traversal_order[0][0]}
+        for (point_a, point_b) in traversal_order[1:]:
             if point_b not in seen:
                 print("The traversal order is not valid, because we have not yet seen the point{}".format(
                     point_b))
@@ -27,7 +27,7 @@ def check_traversal_order(traversal_orders, pos_threshold):
             else:
                 seen.add(point_a)
                 d = dist(point_a, point_b)
-                if d > threshold:
+                if d > pos_threshold:
                     print("Points {} and {} are {} apart, which is too far away".format(
                         point_a, point_b, d))
                     return False
@@ -73,14 +73,15 @@ def bounding_box(rgb_pts):
 
 def cell_to_rgb(rgb_pts, bb_size):
     min_x, max_x, min_y, max_y = bounding_box(rgb_pts)
-    num_cells_x = math.ceil((max_x - min_x)/bb_size)
-    num_cells_y = math.ceil((max_y - min_y)/bb_size)
+    num_cells_x = math.floor((max_x - min_x)/bb_size) + 1
+    num_cells_y = math.floor((max_y - min_y)/bb_size) + 1
     index_map = {(i, j): set() for i in range(num_cells_x)
                  for j in range(num_cells_y)}
+    print(index_map)
     for pt in rgb_pts:
         x, y = pt
         i = int((x - min_x)/bb_size)
-        j = int((y - min_x)/bb_size)
+        j = int((y - min_y)/bb_size)
         index_map[(i, j)].add(pt)
     cell_map = {}
     for key, val in cell_map.items():
@@ -116,10 +117,10 @@ def check_density_spread(rgb_pts, lidar_pts, bb_size):
     cells_with_rgb = filter(lambda x: len(rgb_cells[x]) > 0, rgb_cells)
 
     lidar_cells = cell_to_lidar(rgb_pts, lidar_pts, bb_size)
-    cell_to_lidar = filter(lambda x: len(lidar_cells[x]) > 0, lidar_cells)
+    cell_to_lidar_map = filter(lambda x: len(lidar_cells[x]) > 0, lidar_cells)
 
     for cell in cells_with_rgb:
-        if cell not in cell_to_lidar:
+        if cell not in cell_to_lidar_map:
             x_min, x_max, y_min, y_max = cell
             print("The bounding box from x={} to {} and y={} to {} contains an RGB point but not a lidar point".format(
                 x_min, x_max, y_min, y_max))
