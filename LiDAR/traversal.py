@@ -9,6 +9,7 @@ def get_traversal_order(points):
     Finds a traversal order for determining the spread of a collection of 3D LiDAR points given that points in that collection
     are at most cell_size distance apart
     """
+    # print(points)
     if not len(points): # empty list of points given
         return None
     def get_min(idx):
@@ -29,10 +30,10 @@ def get_traversal_order(points):
     def get_cell_idx(val, idx):
         return int((val - mins[idx])/cell_size)
 
-    for point in points:
-        idxs = get_cell_idx(point[0], 0), get_cell_idx(point[1], 1), get_cell_idx(point[2], 2)
+    for i in range(len(points)):
+        idxs = get_cell_idx(points[i][0], 0), get_cell_idx(points[i][1], 1), get_cell_idx(points[i][2], 2)
         # populates a cell with a point if the point is in the cell; max one point per cell
-        density[idxs[0]][idxs[1]][idxs[2]] = point 
+        density[idxs[0]][idxs[1]][idxs[2]] = i 
     # print(density)
 
     def get_neighbors(point):
@@ -54,16 +55,16 @@ def get_traversal_order(points):
                     yield neighbor
 
     # BFS to find traversal order 
-    start = points[0]
+    start = 0
     ordering = [(start, None)]
     queue = [start]
     seen = {start}
     while queue:
         new_queue = []
-        for point in queue:
-            for neighbor in get_neighbors(point):
+        for point_idx in queue:
+            for neighbor in get_neighbors(points[point_idx]):
                 if neighbor not in seen:
-                    ordering.append((neighbor, point))
+                    ordering.append((neighbor, point_idx))
                     seen.add(neighbor)
                     new_queue.append(neighbor)
         queue = new_queue
@@ -111,7 +112,7 @@ if __name__ == "__main__":
         for key in obj:
             print(key)
             pos_vels = obj[1024]
-            pos = remove_outliers(pos_vels)
+            pos = process_and_remove_outliers(pos_vels)
             points = [tuple(pos) for pos in pos]
             np_points = np.array([pos for pos in pos]) 
             if len(points):

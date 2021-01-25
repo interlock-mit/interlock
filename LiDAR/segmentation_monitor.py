@@ -16,8 +16,10 @@ def dist(point_a, point_b):
     return ((x_a - x_b)**2 + (y_a - y_b)**2 + (z_a - z_b)**2)**0.5
 
 
-def check_traversal_order(traversal_orders, pos_threshold):
-    for traversal_order in traversal_orders:
+def check_traversal_order(points, traversal_orders, pos_threshold):
+    for obj, traversal_order in traversal_orders.items():
+        if traversal_order is None:
+            continue
         seen = {traversal_order[0][0]}
         for (point_a, point_b) in traversal_order[1:]:
             if point_b not in seen:
@@ -26,7 +28,7 @@ def check_traversal_order(traversal_orders, pos_threshold):
                 return False
             else:
                 seen.add(point_a)
-                d = dist(point_a, point_b)
+                d = dist(points[obj][point_a], points[obj][point_b])
                 if d > pos_threshold:
                     print("Points {} and {} are {} apart, which is too far away".format(
                         point_a, point_b, d))
@@ -45,12 +47,13 @@ def avg_velocity(obj):
 
 
 def check_same_velocity(obj_velocities, vel_threshold):
-    for obj in obj_velocities:
-        avg_v_x, avg_v_y, avg_v_z = avg_velocity(obj)
-        for point_vel in obj:
+    for obj, vels in obj_velocities.items():
+        if vels is None:
+            continue
+        avg_v_x, avg_v_y, avg_v_z = avg_velocity(vels)
+        for point_vel in vels:
             v_x, v_y, v_z = point_vel
-            msg = "The velocity of point {} is too different from the average velocity, which is {}".format(
-                point, (avg_v_x, avg_v_y, avg_v_z))
+            msg = f"The velocity {point_vel} is too different from the average velocity, which is {(avg_v_x, avg_v_y, avg_v_z)}"
             if abs(v_x - avg_v_x) > vel_threshold[0]:
                 print(msg)
                 return False
@@ -143,7 +146,7 @@ def check_density_spread_all_objs(all_rgb_pts, labeled_image, object_to_lidar_pt
     return True
 
 
-def interlock(obj_velocities, traversal_orders, pos_threshold, vel_threshold, all_rgb_pts, labeled_image, object_to_lidar_pts, bb_size):
+def interlock(obj_info, traversal_orders, image_ids, vel_threshold, image_scale_factor):
     """
     obj_velocities: list of object velocities
     obj_velocity: list of tuples, each of the form (v_x, v_y, v_z)
@@ -152,14 +155,22 @@ def interlock(obj_velocities, traversal_orders, pos_threshold, vel_threshold, al
             where point_a is the next point in the traversal order
             and point_b is the point close to point_a
     point:  tuple (x, y, z) is the position of the point
-    pos_threshold: maximum distance between two points for them to be "close" (=2*sqrt(2)*cell_size)
+    pos_threshold: maximum distance between two points for them to be "close" (=2*sqrt(3)*cell_size)
     vel_threshold: maximum difference in velocity a point can have
             from the average velocity of that object for it to be "the same"
     """
-    if not check_traversal_order(traversal_orders, pos_threshold):
+    from traversal import cell_size
+    pos_threshold = cell_size * 2 * (3 ** .5)
+    points, vels, image_pos = {}, {}, {}
+    for obj in obj_info:
+        if obj_info[obj]:
+            points[obj], vels[obj], image_pos[obj] = zip(*obj_info[obj])
+
+    if not check_traversal_order(points, traversal_orders, pos_threshold):
         print("Traversal order check failed")
         return False
-    if not check_same_velocity(obj_velocities, vel_threshold):
+
+    if not check_same_velocity(vels, vel_threshold):
         print("Same velocity check failed")
         return False
     if not check_density_spread_all_objs(all_rgb_pts, labeled_image, object_to_lidar_pts, bb_size):
