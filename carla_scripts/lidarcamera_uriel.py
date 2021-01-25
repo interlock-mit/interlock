@@ -13,15 +13,19 @@ from PIL import Image
 import cv2
 import pickle
 from skimage.measure import label, regionprops
+from scipy import stats
 import matplotlib.pyplot as plt
 
 VIRIDIS = np.array(cm.get_cmap('viridis').colors)
 VID_RANGE = np.linspace(0.0,1.0, VIRIDIS.shape[0])
 
 FILTER = True
-RECORD = True
+RECORD = False
 SAVE_RATE = 5
 TIMESTEP_DELTA = .05
+
+# must be a common factor of camera width/height. For 600x800 can be: 2, 4, 5, 8, 10, ...
+DOWNSAMPLE_FACTOR = 10
 
 class Lidarcamera:
     def __init__(self):
@@ -176,7 +180,7 @@ class Lidarcamera:
             if point_ids[i] in vehicle_actor_ids_to_velocity:
                 velocity = vehicle_actor_ids_to_velocity[point_ids[i]]
                 velocities[i] = [velocity.x, velocity.y, velocity.z]
-                colors[i] = [1,0,0]
+                colors[i] = [1,0,0]rgb_image
             else:
                 velocities[i] = [0,0,0]
                 colors[i] = [0,1,1]
@@ -190,17 +194,16 @@ class Lidarcamera:
     def get_objects_with_lidar_pts(self, labeled_image):
         object_to_lidar_pts = {}
         for obj in regionprops(labeled_image):
-            if obj.area >= 100:
+            if obj.area >= 500:
                 object_to_lidar_pts[obj.label] = []
         rgb_pts, velocities, lidar_pts = self.get_rgb_point_velocities(labeled_image)
         for i in range(len(rgb_pts)):
             x,y,_ = rgb_pts[i].astype(np.int)
             pixel_label = labeled_image[x,y]
             if pixel_label in object_to_lidar_pts:
-                object_to_lidar_pts[pixel_label].append([velocities[i], lidar_pts[i]])
+                object_to_lidar_pts[pixel_label].append([lidar_pts[i], velocities[i], [x,y]])
         return object_to_lidar_pts
         
-        print(object_to_lidar_pts)
     def extract_lane_points(self, points):
         valid_lane_points = ((points[:, 0] > -2) & (points[:,0] < 2) & (points[:,1] > 0) & (points[:,2] > -1.2))
         lane_points = points[valid_lane_points]
@@ -209,17 +212,27 @@ class Lidarcamera:
         lane_points[:,1] -= ego_dist_to_front
         return lane_points, lane_points_actor_ids
 
+    def downsample_image(self, image, width, height, factor):
+        image = image.reshape(height//factor,factor,width//factor,factor).swapaxes(1,2).reshape(height//factor,width//factor,-1)
+        im, count = stats.mode(image, axis=2)
+        return im[:,:,0]
+
     def sensor_processor(self):
         try:
             unshaped_rgb_image = self.image_queue.get(True, 1.0)
             unshaped_lidar_cloud = self.lidar_queue.get(True, 1.0)
-            unshaped_camera_segmentation_image = self.camera_segmentation_queue.get(True, 1.0)
-            unshaped_camera_segmentation_image.convert(carla.ColorConverter.CityScapesPalette)
+            unshaped_segmentation_image = self.camera_segmentation_queue.get(True, 1.0)
+            #unshaped_segmentation_image.convert(carla.ColorConverter.CityScapesPalette)
             
             frame = unshaped_lidar_cloud.frame
             rgb_image = self.camera_data_reshaper(unshaped_rgb_image)
             lidar_cloud, lidar_ids = self.lidar_points_reshaper(unshaped_lidar_cloud)
-            camera_segmentation_image = self.camera_data_reshaper(unshaped_camera_segmentation_image)
+            segmentation_image = self.camera_data_reshaper(unshaped_segmentation_image)[:,:,0]
+            #plt.imshow(segmentation_image)
+            #plt.show()
+            down_sampled_segmentation_image = self.downsample_image(segmentation_image, 800, 600, DOWNSAMPLE_FACTOR)
+            #plt.imshow(down_sampled_segmentation_image)
+            #plt.show()
             
         except Empty:
             print("Warning: Sensor data missed")
@@ -250,15 +263,17 @@ class Lidarcamera:
             lane_points, lane_points_actor_ids = self.extract_lane_points(xyz_pts)
             velocities, colors = self.get_lidar_point_velocities(lane_points, lane_points_actor_ids)
 
-            labeled_image = self.label_image(camera_segmentation_image)
+            labeled_image = self.label_image(segmentation_image)
 
             dic = self.get_objects_with_lidar_pts(labeled_image)
-            #fil = open(f"car_{frame}", 'ab')
-            #pickle.dump(dic, fil)
-            #fil.close()
 
             if self.count % SAVE_RATE == 0 and RECORD:
-                Image.fromarray(rgb_image).save(f"lidar/segmentation__{frame}.png")
+                fil = open(f"lidar/car_{frame}", 'ab')
+                pickle.dump(dic, fil)
+                fil.close()
+                Image.fromarray(labeled_image.astype(np.uint8)).save(f"lidar/labeled_image_{frame}.png")
+                Image.fromarray(rgb_image).save(f"lidar/rgb_im_{frame}.png")
+                Image.fromarray(segmentation_image).save(f"lidar/segmentation_{frame}.png")
 
                 pcd = o3d.geometry.PointCloud()
                 pcd.points = o3d.utility.Vector3dVector(xyz_pts.astype(np.float64))
