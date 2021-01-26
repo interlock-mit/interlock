@@ -146,18 +146,38 @@ def check_density_spread_all_objs(image_pos, image, image_scale_factor):
     # print(density)
     return True
 
-def interlock(obj_info, traversal_orders, image, vel_threshold, image_scale_factor):
+
+def check_ground_pts_on_ground(points, ground_id, height_threshold = 0.5):
+    ground_points = points[ground_id]
+    for pt in ground_points:
+        z = pt[2]
+        if z > height_threshold:
+            print("The point {} is not on the ground".format(pt))
+            return False
+    return True
+
+
+def interlock(obj_info, ground_id, traversal_orders, image, vel_threshold, image_scale_factor):
     """
-    obj_velocities: list of object velocities
-    obj_velocity: list of tuples, each of the form (v_x, v_y, v_z)
+    obj_info: dictionary where each key/value pair is an object that maps object ID
+            to a list of points corresponding to that object.
+            each point is a list of the form [loc, vel, image_pos]
+    loc: numpy array of the form (x, y, z)
+    vel: numpy array of the form (v_x, v_y, vg_z)
+    image_pos: list of the form (x, y)
+
+    ground_id: object ID corresponding to the ground object
+
     traversal_orders: list of traversal_orders
     traversal_order: list of tuples, each of the form (point_a, point_b)
             where point_a is the next point in the traversal order
             and point_b is the point close to point_a
-    point:  tuple (x, y, z) is the position of the point
-    pos_threshold: maximum distance between two points for them to be "close" (=2*sqrt(3)*cell_size)
+    point: tuple (x, y, z) is the position of the point
+
     vel_threshold: maximum difference in velocity a point can have
             from the average velocity of that object for it to be "the same"
+
+    image_scale_factor: the scale at which the resolution of the image is decreased
     """
     from traversal import cell_size
     pos_threshold = cell_size * 2 * (3 ** .5)
@@ -174,8 +194,13 @@ def interlock(obj_info, traversal_orders, image, vel_threshold, image_scale_fact
     if not check_same_velocity(vels, vel_threshold):
         print("Same velocity check failed")
         return False
+
     if not check_density_spread_all_objs(image_pos, image, image_scale_factor):
         print("Density/spread check failed")
+        return False
+
+    if not check_ground_pts_on_ground(points, ground_id):
+        print("Ground check failed")
         return False
 
     return True
