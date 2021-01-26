@@ -5,12 +5,17 @@ from collections import defaultdict
 import math
 
 
+MAX_DECEL = 15
+MIN_DIST = 10
+DEFAULT_TIMESTEP = .2
+
+
 def visualize(filename):
     cloud = o3d.io.read_point_cloud(filename)
     o3d.visualization.draw_geometries([cloud])
 
 
-def dist(point_a, point_b):
+def dist(point_a, point_b = (0, 0, 0)):
     x_a, y_a, z_a = point_a
     x_b, y_b, z_b = point_b
     return ((x_a - x_b)**2 + (y_a - y_b)**2 + (z_a - z_b)**2)**0.5
@@ -157,7 +162,52 @@ def check_ground_pts_on_ground(points, ground_id, height_threshold = 0.5):
     return True
 
 
-def interlock(obj_info, ground_id, traversal_orders, image, vel_threshold, image_scale_factor):
+def is_safe(ego_vel, other_pos, other_vel, timestep=DEFAULT_TIMESTEP, min_dist=MIN_DIST, max_decel=MAX_DECEL):
+    cur_speed = dist(ego_vel)
+    stopping_time = cur_speed/max_decel
+
+    def decel(vel, rate):
+        x, y, z = vel
+        helper = lambda x: max(x - rate, 0) if x > 0 else min(x + rate, 0)
+        return (helper(x), helper(y), helper(z))
+
+    def helper(ego_accel, other_accel):
+        cur_time = 0
+        cur_pos = (0, 0, 0)
+        cur_vel = ego_vel
+        other_cur_pos, other_cur_vel = other_pos, other_vel
+        while cur_time < stopping_time:
+            if dist(cur_pos, other_cur_pos) < min_dist:
+                return False
+            cur_vel = decel(cur_vel, ego_accel * timestep)
+            other_cur_vel = decel(other_cur_vel, other_accel * timestep)
+            cur_pos = add(mult(cur_vel, timestep), cur_pos)
+            other_cur_pos = add(mult(other_cur_vel, timestep), other_cur_pos)
+            cur_time += timestep
+        return True
+
+    return helper(max_decel, 0) and helper(max_decel, max_decel)
+
+
+def check_predicates(points, vels, ego_vel):
+    """
+    For now assuming a straight path but eventually we can incorporate curved or more complex paths
+    """
+    point_in_path = lambda x: (-2 < x[0] < 2) and x[1] > 0 and x[2] > -1.2
+    obj_in_path = lambda x: any(point_in_path(p) for p in points[x])
+    object_ids_in_path = list(filter(obj_in_path, points))
+
+    for obj_id in object_ids_in_path:
+        closest_pt = min(points[obj_id], key=lambda p: dist(p))
+        obj_vel = avg_velocity(vels[obj_id])
+        if not is_safe(ego_vel, closest_pt, obj_vel):
+            print("The object with ID {} is not safe".format(obj_id))
+            return False
+
+    return True
+
+
+def interlock(obj_info, ground_id, traversal_orders, image, vel_threshold, image_scale_factor, ego_vel):
     """
     obj_info: dictionary where each key/value pair is an object that maps object ID
             to a list of points corresponding to that object.
@@ -178,6 +228,8 @@ def interlock(obj_info, ground_id, traversal_orders, image, vel_threshold, image
             from the average velocity of that object for it to be "the same"
 
     image_scale_factor: the scale at which the resolution of the image is decreased
+
+    ego_vel: tuple (v_x, v_y, v_z) of the ego vehicle's current velocity
     """
     from traversal import cell_size
     pos_threshold = cell_size * 2 * (3 ** .5)
@@ -201,6 +253,10 @@ def interlock(obj_info, ground_id, traversal_orders, image, vel_threshold, image
 
     if not check_ground_pts_on_ground(points, ground_id):
         print("Ground check failed")
+        return False
+
+    if not check_predicates(points, vels, ego_vel):
+        print("Predicates check failed")
         return False
 
     return True
