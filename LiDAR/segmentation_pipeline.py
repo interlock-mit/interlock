@@ -12,12 +12,17 @@ def get_traversal_orders(obj_info):
 
 pcd = open3d.geometry.PointCloud()
 pcd_points = None
-with open("car_106761.pkl", 'rb') as pklfile: 
+with open("car_1125.pkl", 'rb') as pklfile: 
     # keys: [1, 2, 7, 123, 155, 163, 222, 246, 261, 309, 335, 398, 423, 499, 500, 510, 518, 519, 521, 531, 568, 569, 573, 575, 580, 586, 593, 608, 632, 634, 684, 689, 692, 693, 694, 695]
-    obj_info = pickle.load(pklfile)
+    data = pickle.load(pklfile)
+    obj_info = data["object_pts"]
     print(obj_info.keys())
+    image = data["labeled_image"]
+    scale_factor = data["factor"]
+    print(image)
+    print(type(image))
     traversal_orders = get_traversal_orders(obj_info)
-    interlock(obj_info, traversal_orders, None, (2,2,2), None)
+    interlock(obj_info, traversal_orders, image, (2,2,2), scale_factor)
 
     # for key in obj:
     #     print(key)

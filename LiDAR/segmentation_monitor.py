@@ -50,6 +50,7 @@ def check_same_velocity(obj_velocities, vel_threshold):
     for obj, vels in obj_velocities.items():
         if vels is None:
             continue
+        # print(vels)
         avg_v_x, avg_v_y, avg_v_z = avg_velocity(vels)
         for point_vel in vels:
             v_x, v_y, v_z = point_vel
@@ -131,22 +132,21 @@ def check_density_spread(rgb_pts, lidar_pts, bb_size):
     return True
 
 
-def check_density_spread_all_objs(all_rgb_pts, labeled_image, object_to_lidar_pts, bb_size):
-    rgb_objects = defaultdict(set)
-    for rgb_pt in all_rgb_pts:
-        x, y, _ = rgb_pt.astype(np.int)
-        rgb_objects[labeled_image[x, y]].add(rgb_pt)
-    for label in rgb_objects:
-        rgb_pts = rgb_objects[label]
-        lidar_pts = object_to_lidar_pts[label]
-        if not check_density_spread(rgb_pts, lidar_pts, bb_size):
-            print(
-                "The object labeled {} does not have sufficient density/spread".format(label))
-            return False
+def check_density_spread_all_objs(image_pos, image, image_scale_factor):
+    density = [[set() for i in range(image.shape[1])] for j in range(image.shape[0])]
+    print(len(image_pos))
+    for obj in image_pos:
+        for point in image_pos[obj]:
+            density[point[0]//image_scale_factor][point[1]//image_scale_factor].add(obj)
+    
+    for i in range(len(density)):
+        for j in range(len(density[i])):
+            if image[i][j] not in density[i][j]:
+                return False
+    # print(density)
     return True
 
-
-def interlock(obj_info, traversal_orders, image_ids, vel_threshold, image_scale_factor):
+def interlock(obj_info, traversal_orders, image, vel_threshold, image_scale_factor):
     """
     obj_velocities: list of object velocities
     obj_velocity: list of tuples, each of the form (v_x, v_y, v_z)
@@ -162,6 +162,7 @@ def interlock(obj_info, traversal_orders, image_ids, vel_threshold, image_scale_
     from traversal import cell_size
     pos_threshold = cell_size * 2 * (3 ** .5)
     points, vels, image_pos = {}, {}, {}
+    print(len(obj_info))
     for obj in obj_info:
         if obj_info[obj]:
             points[obj], vels[obj], image_pos[obj] = zip(*obj_info[obj])
@@ -173,7 +174,7 @@ def interlock(obj_info, traversal_orders, image_ids, vel_threshold, image_scale_
     if not check_same_velocity(vels, vel_threshold):
         print("Same velocity check failed")
         return False
-    if not check_density_spread_all_objs(all_rgb_pts, labeled_image, object_to_lidar_pts, bb_size):
+    if not check_density_spread_all_objs(image_pos, image, image_scale_factor):
         print("Density/spread check failed")
         return False
 
