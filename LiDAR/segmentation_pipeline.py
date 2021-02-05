@@ -1,5 +1,5 @@
 from traversal import get_traversal_order, cell_size, process_and_remove_outliers
-from segmentation_monitor import check_traversal_order, check_density_spread, interlock
+from segmentation_monitor import interlock
 
 import pickle
 import numpy as np
@@ -21,8 +21,14 @@ with open("pkl_files/car_530.pkl", 'rb') as pklfile:
     scale_factor = data["factor"]
     print(image)
     print(type(image))
+    nums = set()
+    for i in range(len(image)):
+        for j in range(len(image[i])):
+            nums.add(image[i][j])
+    print(nums)
+    # process_and_remove_outliers(obj_info)
     traversal_orders = get_traversal_orders(obj_info)
-    interlock(obj_info, traversal_orders, image, (2,2,2), scale_factor)
+    interlock(obj_info, None, traversal_orders, image, (10,10,10), scale_factor, None)
 
     # for key in obj:
     #     print(key)

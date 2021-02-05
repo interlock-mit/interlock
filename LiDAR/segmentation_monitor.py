@@ -37,8 +37,8 @@ def check_traversal_order(points, traversal_orders, pos_threshold):
                 if d > pos_threshold:
                     print("Points {} and {} are {} apart, which is too far away".format(
                         point_a, point_b, d))
-                    return False
-    return True
+                    return False, obj
+    return True, None
 
 
 def avg_velocity(obj):
@@ -60,81 +60,10 @@ def check_same_velocity(obj_velocities, vel_threshold):
         for point_vel in vels:
             v_x, v_y, v_z = point_vel
             msg = f"The velocity {point_vel} is too different from the average velocity, which is {(avg_v_x, avg_v_y, avg_v_z)}"
-            if abs(v_x - avg_v_x) > vel_threshold[0]:
+            if abs(v_x - avg_v_x) > vel_threshold[0] or abs(v_y - avg_v_y) > vel_threshold[1] or abs(v_z - avg_v_z) > vel_threshold[2]:
                 print(msg)
-                return False
-            if abs(v_y - avg_v_y) > vel_threshold[1]:
-                print(msg)
-                return False
-            if abs(v_z - avg_v_z) > vel_threshold[2]:
-                print(msg)
-                return False
-    return True
-
-
-def bounding_box(rgb_pts):
-    min_x = min([pt[0] for pt in rgb_pts])
-    max_x = max([pt[0] for pt in rgb_pts])
-    min_y = min([pt[1] for pt in rgb_pts])
-    max_y = max([pt[1] for pt in rgb_pts])
-    return min_x, max_x, min_y, max_y
-
-
-def cell_to_rgb(rgb_pts, bb_size):
-    min_x, max_x, min_y, max_y = bounding_box(rgb_pts)
-    num_cells_x = math.floor((max_x - min_x)/bb_size) + 1
-    num_cells_y = math.floor((max_y - min_y)/bb_size) + 1
-    index_map = {(i, j): set() for i in range(num_cells_x)
-                 for j in range(num_cells_y)}
-    print(index_map)
-    for pt in rgb_pts:
-        x, y = pt
-        i = int((x - min_x)/bb_size)
-        j = int((y - min_y)/bb_size)
-        index_map[(i, j)].add(pt)
-    cell_map = {}
-    for key, val in cell_map.items():
-        i, j = key
-        x = min_x + i*bb_size
-        y = min_y + j*bb_size
-        cell_map[(x, x+bb_size, y, y+bb_size)] = val
-    return cell_map
-
-
-def cell_to_lidar(rgb_pts, lidar_pts, bb_size):
-    min_x, max_x, min_y, max_y = bounding_box(rgb_pts)
-    num_cells_x = math.ceil((max_x - min_x)/bb_size)
-    num_cells_y = math.ceil((max_y - min_y)/bb_size)
-    index_map = {(i, j): set() for i in range(num_cells_x)
-                 for j in range(num_cells_y)}
-    for pt in lidar_pts:
-        x, y = pt
-        i = int((x - min_x)/bb_size)
-        j = int((y - min_x)/bb_size)
-        index_map[(i, j)].add(pt)
-    cell_map = {}
-    for key, val in cell_map.items():
-        i, j = key
-        x = min_x + i*bb_size
-        y = min_y + j*bb_size
-        cell_map[(x, x+bb_size, y, y+bb_size)] = val
-    return cell_map
-
-
-def check_density_spread(rgb_pts, lidar_pts, bb_size):
-    rgb_cells = cell_to_rgb(rgb_pts, bb_size)
-    cells_with_rgb = filter(lambda x: len(rgb_cells[x]) > 0, rgb_cells)
-
-    lidar_cells = cell_to_lidar(rgb_pts, lidar_pts, bb_size)
-    cell_to_lidar_map = filter(lambda x: len(lidar_cells[x]) > 0, lidar_cells)
-
-    for cell in cells_with_rgb:
-        if cell not in cell_to_lidar_map:
-            x_min, x_max, y_min, y_max = cell
-            print("The bounding box from x={} to {} and y={} to {} contains an RGB point but not a lidar point".format(
-                x_min, x_max, y_min, y_max))
-            return False
-    return True
+                return False, obj
+    return True, None
 
 
 def check_density_spread_all_objs(image_pos, image, image_scale_factor):
@@ -144,12 +73,16 @@ def check_density_spread_all_objs(image_pos, image, image_scale_factor):
         for point in image_pos[obj]:
             density[point[0]//image_scale_factor][point[1]//image_scale_factor].add(obj)
     
+    bad_objs = set()
     for i in range(len(density)):
         for j in range(len(density[i])):
             if image[i][j] not in density[i][j]:
-                return False
-    # print(density)
-    return True
+                bad_objs.add(image[i][j])
+                return False, image[i][j]
+    # if bad_objs:
+    #     return False, list(bad_objs)
+    # # print(density)
+    return True, None
 
 
 def check_ground_pts_on_ground(points, ground_id, height_threshold = 0.5):
@@ -239,25 +172,59 @@ def interlock(obj_info, ground_id, traversal_orders, image, vel_threshold, image
         if obj_info[obj]:
             points[obj], vels[obj], image_pos[obj] = zip(*obj_info[obj])
 
-    if not check_traversal_order(points, traversal_orders, pos_threshold):
+    def display_point_cloud(wrong_obj):
+        import open3d
+        pcd = open3d.geometry.PointCloud()
+        # for wrong_obj in wrong_objs:
+        pcd.points = open3d.utility.Vector3dVector(np.array(points[wrong_obj]))
+        open3d.visualization.draw_geometries([pcd])
+
+        pcd = open3d.geometry.PointCloud()
+        pcd_points = None
+        for obj in points:
+            np_points = np.array(points[obj]) 
+            pcd_points = np.concatenate((pcd_points, np_points), axis=0) if pcd_points is not None else np_points
+        pcd.points = open3d.utility.Vector3dVector(pcd_points)
+        open3d.visualization.draw_geometries([pcd])
+
+        # for wrong_obj in wrong_objs:
+        cur_img = np.zeros((600, 800, 3))
+        for obj in points:
+            if obj == wrong_obj:
+                color = [1, 0, 0]
+            else:
+                color = [obj/40, obj/40, obj/40]
+            for x, y in image_pos[obj]:
+                cur_img[x][y] = color
+        import matplotlib.pyplot as plt
+        plt.imshow(cur_img)
+        plt.show()
+
+    result = check_traversal_order(points, traversal_orders, pos_threshold)
+    if not result[0]:
         print("Traversal order check failed")
+        display_point_cloud(result[1])
         return False
 
-    if not check_same_velocity(vels, vel_threshold):
+    result = check_same_velocity(vels, vel_threshold)
+    if not result[0]:
         print("Same velocity check failed")
+        display_point_cloud(result[1])
         return False
 
-    if not check_density_spread_all_objs(image_pos, image, image_scale_factor):
-        print("Density/spread check failed")
+    result = check_density_spread_all_objs(image_pos, image, image_scale_factor)
+    if not result[0]:
+        print("Density/spread check failed", result[1])
+        display_point_cloud(result[1])
         return False
 
-    if not check_ground_pts_on_ground(points, ground_id):
-        print("Ground check failed")
-        return False
+    # if not check_ground_pts_on_ground(points, ground_id):
+    #     print("Ground check failed")
+    #     return False
 
-    if not check_predicates(points, vels, ego_vel):
-        print("Predicates check failed")
-        return False
+    # if not check_predicates(points, vels, ego_vel):
+    #     print("Predicates check failed")
+    #     return False
 
     return True
 

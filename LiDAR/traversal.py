@@ -87,14 +87,18 @@ def generate_points(lower, upper, is_rand = False):
     return pts
 
 
-def process_and_remove_outliers(pos_vels, remove=True):
+def process_and_remove_outliers(obj_info):
     axis = 1
     filter_dist = 3
-    points = sorted([tuple(pos) for pos, vel, pic_pos in pos_vels], key=lambda x: x[axis])
-    if remove:
-        median = points[len(points)//2][axis]
-        return list(filter(lambda x: abs(x[axis] - median) < filter_dist, points))
-    return points
+    for obj in obj_info:
+        if not obj_info[obj]:
+            continue
+        # print(obj_info[obj])
+        points = sorted(obj_info[obj], key=lambda x: x[0][axis])
+        median = points[len(points)//2][0][axis]
+        obj_info[obj] = list(filter(lambda x: abs(x[0][axis] - median) < filter_dist, points))
+        # print(obj_info[obj])
+
 
 
 
