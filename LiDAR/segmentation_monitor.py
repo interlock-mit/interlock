@@ -15,7 +15,7 @@ def visualize(filename):
     o3d.visualization.draw_geometries([cloud])
 
 
-def dist(point_a, point_b = (0, 0, 0)):
+def dist(point_a, point_b=(0, 0, 0)):
     x_a, y_a, z_a = point_a
     x_b, y_b, z_b = point_b
     return ((x_a - x_b)**2 + (y_a - y_b)**2 + (z_a - z_b)**2)**0.5
@@ -28,15 +28,15 @@ def check_traversal_order(points, traversal_orders, pos_threshold):
         seen = {traversal_order[0][0]}
         for (point_a, point_b) in traversal_order[1:]:
             if point_b not in seen:
-                print("The traversal order is not valid, because we have not yet seen the point{}".format(
-                    point_b))
+                msg = f"The traversal order is not valid, because we have not yet seen the point {point_b}"
+                print(msg)
                 return False
             else:
                 seen.add(point_a)
                 d = dist(points[obj][point_a], points[obj][point_b])
                 if d > pos_threshold:
-                    print("Points {} and {} are {} apart, which is too far away".format(
-                        point_a, point_b, d))
+                    msg = f"Points {point_a} and {point_b} are {d} apart, which is too far away"
+                    print(message)
                     return False, obj
     return True, None
 
@@ -59,8 +59,8 @@ def check_same_velocity(obj_velocities, vel_threshold):
         avg_v_x, avg_v_y, avg_v_z = avg_velocity(vels)
         for point_vel in vels:
             v_x, v_y, v_z = point_vel
-            msg = f"The velocity {point_vel} is too different from the average velocity, which is {(avg_v_x, avg_v_y, avg_v_z)}"
             if abs(v_x - avg_v_x) > vel_threshold[0] or abs(v_y - avg_v_y) > vel_threshold[1] or abs(v_z - avg_v_z) > vel_threshold[2]:
+                msg = f"The velocity {point_vel} is too different from the average velocity, which is {(avg_v_x, avg_v_y, avg_v_z)}"
                 print(msg)
                 return False, obj
     return True, None
@@ -85,12 +85,13 @@ def check_density_spread_all_objs(image_pos, image, image_scale_factor):
     return True, None
 
 
-def check_ground_pts_on_ground(points, ground_id, height_threshold = 0.5):
+def check_ground_pts_on_ground(points, ground_id, height_threshold=0.5):
     ground_points = points[ground_id]
     for pt in ground_points:
         z = pt[2]
         if z > height_threshold:
-            print("The point {} is not on the ground".format(pt))
+            msg = f"The point {pt} is not on the ground"
+            print(msg)
             return False
     return True
 
@@ -134,7 +135,8 @@ def check_predicates(points, vels, ego_vel):
         closest_pt = min(points[obj_id], key=lambda p: dist(p))
         obj_vel = avg_velocity(vels[obj_id])
         if not is_safe(ego_vel, closest_pt, obj_vel):
-            print("The object with ID {} is not safe".format(obj_id))
+            msg = f"The object with ID {obj_id} is not safe"
+            print(msg)
             return False
 
     return True
@@ -182,7 +184,7 @@ def interlock(obj_info, ground_id, traversal_orders, image, vel_threshold, image
         pcd = open3d.geometry.PointCloud()
         pcd_points = None
         for obj in points:
-            np_points = np.array(points[obj]) 
+            np_points = np.array(points[obj])
             pcd_points = np.concatenate((pcd_points, np_points), axis=0) if pcd_points is not None else np_points
         pcd.points = open3d.utility.Vector3dVector(pcd_points)
         open3d.visualization.draw_geometries([pcd])
@@ -218,13 +220,13 @@ def interlock(obj_info, ground_id, traversal_orders, image, vel_threshold, image
         display_point_cloud(result[1])
         return False
 
-    # if not check_ground_pts_on_ground(points, ground_id):
-    #     print("Ground check failed")
-    #     return False
+    if not check_ground_pts_on_ground(points, ground_id):
+        print("Ground check failed")
+        return False
 
-    # if not check_predicates(points, vels, ego_vel):
-    #     print("Predicates check failed")
-    #     return False
+    if not check_predicates(points, vels, ego_vel):
+        print("Predicates check failed")
+        return False
 
     return True
 

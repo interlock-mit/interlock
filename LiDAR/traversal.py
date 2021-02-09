@@ -2,9 +2,10 @@ cell_size = .5
 
 def get_traversal_order(points):
     """
-    input: points - a list of tuples, where each tuple corresponds to a point in 3D space
-    output: a list of tuples, where each tuple contains two 3D points; the first point must be close to the second point, 
-    and the second point must be a point that we have seen earlier on in the list; the first tuple's second value is None
+    input: points - a list of tuples, where each tuple of the form (x, y, z) corresponds to a point in 3D space
+    output: a list of tuples, where each tuple contains two 3D points, each a tuple of the form (x, y, z);
+    the first point must be close to the second point, and the second point must be a point that we have seen earlier on in the list;
+    the first tuple's second value is None
 
     Finds a traversal order for determining the spread of a collection of 3D LiDAR points given that points in that collection
     are at most cell_size distance apart
