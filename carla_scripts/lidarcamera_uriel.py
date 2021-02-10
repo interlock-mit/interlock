@@ -25,6 +25,30 @@ RECORD = True
 SAVE_RATE = 5
 TIMESTEP_DELTA = .05
 
+TAG = {"unlabeled": 0,
+        "building": 1,
+        "fence": 2,
+        "other": 3,
+        "pedestrian": 4,
+        "pole": 5,
+        "roadline": 6,
+        "road": 7,
+        "sidewalk": 8,
+        "vegetation": 9,
+        "vehicles": 10,
+        "wall": 11,
+        "trafficsign": 12,
+        "sky": 13,
+        "ground": 14,
+        "bridge": 15,
+        "railtrack": 16,
+        "guardrail": 17,
+        "trafficlight": 18,
+        "static": 19,
+        "dynamic": 20,
+        "water": 21,
+        "terrain": 22}
+
 # must be a common factor of camera width/height. For 600x800 can be: 2, 4, 5, 8, 10, ...
 DOWNSAMPLE_FACTOR = 10
 
@@ -104,7 +128,7 @@ class Lidarcamera:
         im_array = im_array[:, :, :3][:, :, ::-1][:, :, 0]
         self.camera_segmentation_queue.put(im_array)
 
-    def get_rgb_point_velocities(self, rgb_image):
+    def get_rgb_point_velocities(self):
         # see carla/PythonAPI/examples/lidar_to_camera.py for detailed documentation
         
         xyz_pts = np.copy(self.points)
@@ -166,18 +190,26 @@ class Lidarcamera:
                 colors[i] = [0,1,1]
         return velocities, colors
 
-    def get_objects_with_lidar_pts(self, labeled_image, factor):
-        object_to_lidar_pts = {}
+    def get_objects_with_lidar_pts(self, labeled_image, downscaled_segmented_img, segmented_img, factor):
+        grid = [[[label] for label in row] for row in labeled_image]
+        """object_to_lidar_pts = {}
         for obj in regionprops(labeled_image):
             if obj.area >= 500 / (factor * factor):
-                object_to_lidar_pts[obj.label] = []
-        rgb_pts, velocities, lidar_pts = self.get_rgb_point_velocities(labeled_image)
+                object_to_lidar_pts[obj.label] = []"""
+        rgb_pts, velocities, lidar_pts = self.get_rgb_point_velocities()
         for i in range(len(rgb_pts)):
             x,y,_ = rgb_pts[i].astype(np.int)
-            pixel_label = labeled_image[x//factor,y//factor]
-            if pixel_label in object_to_lidar_pts:
-                object_to_lidar_pts[pixel_label].append([lidar_pts[i], velocities[i], [x,y]])
-        return object_to_lidar_pts
+            true_segmented_label = segmented_img[x, y]
+            segmented_label = downscaled_segmented_img[x//factor, y//factor]
+            """
+            object_label = labeled_image[x//factor,y//factor]
+            if true_segmented_label == segmented_label and object_label in object_to_lidar_pts:
+                object_to_lidar_pts[object_label].append([lidar_pts[i], velocities[i], [x,y]])
+            """
+            if true_segmented_label == segmented_label and len(grid[x//factor][y//factor]) == 1:
+                grid[x//factor][y//factor].append([lidar_pts[i], velocities[i]])
+        #print([[int(len(x) > 1) for x in row] for row in grid])
+        return grid
         
     def extract_lane_points(self, points):
         valid_lane_points = ((points[:, 0] > -2) & (points[:,0] < 2) & (points[:,1] > 0) & (points[:,2] > -1.2))
@@ -207,11 +239,9 @@ class Lidarcamera:
                 plt.show()
 
     def label(self, segmentation_img):
-        # making roadline and road the same
-        #segmentation_img[segmentation_img == 6] = 7
-        #focus = {4: "pedestrian", 7: "road", 8: "sidewalk", 10: "vehicles"}
-        #func = lambda val: val if val in focus else 0
-        #segmentation_img = np.vectorize(func)(segmentation_img)
+        segmentation_img = np.copy(segmentation_img)
+        ground_indices = (segmentation_img == TAG["roadline"]) | (segmentation_img == TAG["sidewalk"]) | (segmentation_img == TAG["road"])
+        segmentation_img[ground_indices] = TAG["road"]
         return label(segmentation_img, connectivity=1)
 
     def sensor_processor(self, frame_number):
@@ -224,47 +254,45 @@ class Lidarcamera:
             print("Warning: Sensor data missed")
             return
         
-        if self.points is not None:
-            self.points = np.append(self.points, lidar_cloud, axis=0)
-        else:
-            self.points = lidar_cloud
+        self.points = lidar_cloud
 
-        # the lidar does not complete a full rotation every tick, so we keep
-        # track of the scanned angle to know when it has finished one rotation
-        self.scanned_angle += 1
-        if self.scanned_angle % 2 == 0:
-            down_sampled_segmentation_image = self.downsample_image(segmentation_image, 800, 600, DOWNSAMPLE_FACTOR)
-            labeled_image = self.label(down_sampled_segmentation_image)
-            object_id_to_lidar_pts = self.get_objects_with_lidar_pts(labeled_image, DOWNSAMPLE_FACTOR)
-            #self.show_points(segmentation_image, labeled_image, DOWNSAMPLE_FACTOR)
-            dic = {"object_pts": object_id_to_lidar_pts,
-                    "labeled_image": labeled_image,
-                    "factor": DOWNSAMPLE_FACTOR}
+        down_sampled_segmentation_image = self.downsample_image(segmentation_image, 800, 600, DOWNSAMPLE_FACTOR)
+        labeled_image = self.label(down_sampled_segmentation_image)
+        object_id_to_lidar_pts = self.get_objects_with_lidar_pts(labeled_image, down_sampled_segmentation_image, segmentation_image, DOWNSAMPLE_FACTOR)
+        #self.show_points(segmentation_image, labeled_image, DOWNSAMPLE_FACTOR)
+        dic = {"object_pts": object_id_to_lidar_pts,
+                "labeled_image": labeled_image,
+                "factor": DOWNSAMPLE_FACTOR}
 
-            self.count += 1
-            if self.count % SAVE_RATE == 0 and RECORD:
-                #fil = open(f"lidar/car_{frame_number}", 'ab')
-                #pickle.dump(dic, fil)
-                #fil.close()
-                #Image.fromarray(labeled_image.astype(np.uint8)).save(f"lidar/labeled_image_{frame_number}.png")
-                #Image.fromarray(rgb_image).save(f"lidar/rgb_im_{frame_number}.png")
-                #Image.fromarray(segmentation_image).save(f"lidar/segmentation_{frame_number}.png")
-                pass
+        self.count += 1
+        if self.count % SAVE_RATE == 0 and RECORD:
+            #fil = open(f"lidar/car_{frame_number}", 'ab')
+            #pickle.dump(dic, fil)
+            #fil.close()
+            #Image.fromarray(labeled_image.astype(np.uint8)).save(f"lidar/labeled_image_{frame_number}.png")
+            Image.fromarray(rgb_image).save(f"lidar/rgb_im_{frame_number}.png")
+            Image.fromarray(segmentation_image).save(f"lidar/segmentation_{frame_number}.png")
+            Image.fromarray(down_sampled_segmentation_image).save(f"lidar/downsampled_{frame_number}.png")
+            rgb_pts, velocities, lidar_pts = self.get_rgb_point_velocities()
+            for i in range(len(rgb_pts)):
+                x,y,_ = rgb_pts[i].astype(np.int)
+                segmentation_image[x,y] = 0
+            Image.fromarray(segmentation_image).save(f"lidar/rgb_im_lidar_{frame_number}.png")
+            pass
+        
+        # some weird transformations have to happen for the visualizer:
+        # flip the x and y coords 
+        """xyz_pts = np.copy(self.points)
+        xyz_pts[:,[0,1]] = xyz_pts[:,[1,0]]
+        xyz_pts = xyz_pts[:,:3]
 
-            
-            # some weird transformations have to happen for the visualizer:
-            # flip the x and y coords 
-            """xyz_pts = np.copy(self.points)
-            xyz_pts[:,[0,1]] = xyz_pts[:,[1,0]]
-            xyz_pts = xyz_pts[:,:3]
+        lane_points = self.extract_lane_points(xyz_pts)
+        velocities, colors = self.get_lidar_point_velocities(lane_points)
 
-            lane_points = self.extract_lane_points(xyz_pts)
-            velocities, colors = self.get_lidar_point_velocities(lane_points)
-
-            ego_vel = self.ego_vehicle.get_velocity() 
-            ego_speed = (ego_vel.x ** 2 + ego_vel.y ** 2 + ego_vel.z ** 2) ** .5
-            self.certificate_result, self.closest_point = interlock(lane_points, velocities, ego_speed, TIMESTEP_DELTA)"""
-            self.points = None
+        ego_vel = self.ego_vehicle.get_velocity() 
+        ego_speed = (ego_vel.x ** 2 + ego_vel.y ** 2 + ego_vel.z ** 2) ** .5
+        self.certificate_result, self.closest_point = interlock(lane_points, velocities, ego_speed, TIMESTEP_DELTA)"""
+        self.points = None
 
     def spawn_obstacle(self, index=0, dist=15):
         if self.obstacle is not None:
@@ -332,11 +360,12 @@ class Lidarcamera:
             # these specs follow the velodyne vlp32 spec
             blueprint_lidar.set_attribute('range', '200')
             #blueprint_lidar.set_attribute('range', '30')
-            blueprint_lidar.set_attribute('rotation_frequency', '10')
+            blueprint_lidar.set_attribute('rotation_frequency', '20')
             blueprint_lidar.set_attribute('channels', '32')
             blueprint_lidar.set_attribute('lower_fov', '-25')
             blueprint_lidar.set_attribute('upper_fov', '15')
             blueprint_lidar.set_attribute('points_per_second', '578560')
+            #blueprint_lidar.set_attribute('atmosphere_attenuation_rate', '0.0')
             self.blueprint_lidar = blueprint_lidar
             transform_lidar = carla.Transform(carla.Location(x=0.0, z=1.8))
             self.lidar = self.world.spawn_actor(blueprint_lidar, transform_lidar, attach_to=self.ego_vehicle)
@@ -361,7 +390,7 @@ class Lidarcamera:
             while (True):
                 self.world.tick()
                 self.frame += 1
-                self.sensor_processor(self.frame)
+                #self.sensor_processor(self.frame)
                 strs = []
                 locs = []
 
