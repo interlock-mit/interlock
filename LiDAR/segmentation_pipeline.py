@@ -6,29 +6,51 @@ import numpy as np
 import open3d
 
 
-def get_traversal_orders(obj_info):
+def combine_img_lidar(obj_info, image, scale_factor):
+    cell_to_lidar = {}
+    for obj_id in obj_info:dar = {}
+    for obj_id in obj_info:
+        obj = obj_info[obj_id]
+        for point in obj:
+            x, y = point[2]
+            cell = (x//10, y//10)
+            if cell in cell_to_lidar:
+                cell_to_lidar[cell].append(point)
+            else:
+                cell_to_lidar[cell] = [point]
+
+    grid = []
+    for j in range(len(image)):
+        row = []
+        for i in range(len(image[j])):
+            if (i, j) in cell_to_lidar:
+                lidar_pts = cell_to_lidar[(i, j)]
+            else:
+                lidar_pts = []
+            obj_id = image[j][i]
+            cell_info = (obj_id, lidar_pts)
+            row.append(cell_info)
+        grid.append(row)
+
+    return grid
+
+
+def get_traversal_orders(grid):
     return {obj: get_traversal_order([point_info[0] for point_info in obj_info[obj]]) for obj in obj_info}
 
 
 pcd = open3d.geometry.PointCloud()
 pcd_points = None
 with open("pkl_files/car_530.pkl", 'rb') as pklfile: 
-    # keys: [1, 2, 7, 123, 155, 163, 222, 246, 261, 309, 335, 398, 423, 499, 500, 510, 518, 519, 521, 531, 568, 569, 573, 575, 580, 586, 593, 608, 632, 634, 684, 689, 692, 693, 694, 695]
+    # keys: [1, 5, 6, 7, 8, 9, 11, 13, 15, 16, 17, 18, 22, 24, 25, 27, 33, 35, 36, 38, 39, 40]
     data = pickle.load(pklfile)
     obj_info = data["object_pts"]
-    print(obj_info.keys())
     image = data["labeled_image"]
     scale_factor = data["factor"]
-    print(image)
-    print(type(image))
-    nums = set()
-    for i in range(len(image)):
-        for j in range(len(image[i])):
-            nums.add(image[i][j])
-    print(nums)
     # process_and_remove_outliers(obj_info)
     traversal_orders = get_traversal_orders(obj_info)
-    interlock(obj_info, None, traversal_orders, image, (10,10,10), scale_factor, None)
+    grid = combine_img_lidar(obj_info, image, scale_factor)
+    interlock(grid, None, traversal_orders, image, (10,10,10), scale_factor, None)
 
     # for key in obj:
     #     print(key)
