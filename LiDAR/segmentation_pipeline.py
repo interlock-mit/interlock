@@ -1,4 +1,5 @@
-from traversal import get_traversal_order, cell_size, process_and_remove_outliers
+# from traversal import get_traversal_order, cell_size, process_and_remove_outliers
+from v2_traversal import get_traversal_orders, cell_size, process_and_remove_outliers
 from segmentation_monitor import interlock
 
 import pickle
@@ -35,8 +36,8 @@ def combine_img_lidar(obj_info, image, scale_factor):
     return grid
 
 
-def get_traversal_orders(grid):
-    return {obj: get_traversal_order([point_info[0] for point_info in obj_info[obj]]) for obj in obj_info}
+# def get_traversal_orders(obj_info):
+#     return {obj: get_traversal_order([point_info[0] for point_info in obj_info[obj]]) for obj in obj_info}
 
 
 pcd = open3d.geometry.PointCloud()
@@ -48,8 +49,9 @@ with open("pkl_files/car_530.pkl", 'rb') as pklfile:
     image = data["labeled_image"]
     scale_factor = data["factor"]
     # process_and_remove_outliers(obj_info)
-    traversal_orders = get_traversal_orders(obj_info)
+    # traversal_orders = get_traversal_orders(obj_info)
     grid = combine_img_lidar(obj_info, image, scale_factor)
+    traversal_orders = get_traversal_orders(grid)
     interlock(grid, None, traversal_orders, image, (10,10,10), scale_factor, None)
 
     # for key in obj:

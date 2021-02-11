@@ -21,9 +21,15 @@ def dist(point_a, point_b=(0, 0, 0)):
     return ((x_a - x_b)**2 + (y_a - y_b)**2 + (z_a - z_b)**2)**0.5
 
 
-def check_traversal_order(points, traversal_orders, pos_threshold):
-    for obj, traversal_order in traversal_orders.items():
-        if traversal_order is None:
+def get_points(obj_id, grid):
+    cells = [cell for row in grid for cell in row if cell[0] == obj_id]
+    points = [pt for cell in cells for pt in cell[1]]
+    return points
+
+
+def check_traversal_order(grid, traversal_orders, pos_threshold):
+    for (obj_id, traversal_order) in traversal_orders:
+        if traversal_order is None or len(traversal_order) == 0:
             continue
         seen = {traversal_order[0][0]}
         for (point_a, point_b) in traversal_order[1:]:
@@ -33,11 +39,13 @@ def check_traversal_order(points, traversal_orders, pos_threshold):
                 return False
             else:
                 seen.add(point_a)
-                d = dist(points[obj][point_a], points[obj][point_b])
+                i_a, j_a, k_a = point_a
+                i_b, j_b, k_b = point_b
+                d = dist(grid[j_a][i_a][1][k_a][0], grid[j_b][i_b][1][k_b][0])
                 if d > pos_threshold:
                     msg = f"Points {point_a} and {point_b} are {d} apart, which is too far away"
                     print(msg)
-                    return False, obj
+                    return False, obj_id
     return True, None
 
 
@@ -85,8 +93,8 @@ def check_density_spread_all_objs(image_pos, image, image_scale_factor):
     return True, None
 
 
-def check_ground_pts_on_ground(points, ground_id, height_threshold=0.5):
-    ground_points = points[ground_id]
+def check_ground_pts_on_ground(grid, ground_id, height_threshold=0.5):
+    ground_points = get_points(ground_id, grid)
     for pt in ground_points:
         z = pt[2]
         if z > height_threshold:
@@ -123,16 +131,17 @@ def is_safe(ego_vel, other_pos, other_vel, timestep=DEFAULT_TIMESTEP, min_dist=M
     return helper(max_decel, 0) and helper(max_decel, max_decel)
 
 
-def check_predicates(points, vels, ego_vel):
+def check_predicates(grid, vels, ego_vel):
     """
     For now assuming a straight path but eventually we can incorporate curved or more complex paths
     """
     point_in_path = lambda x: (-2 < x[0] < 2) and x[1] > 0 and x[2] > -1.2
-    obj_in_path = lambda x: any(point_in_path(p) for p in points[x])
-    object_ids_in_path = list(filter(obj_in_path, points))
+    obj_in_path = lambda x: any(point_in_path(p) for p in get_points(x, grid))
+    obj_ids = {cell[0] for row in grid for cell in row}
+    object_ids_in_path = list(filter(obj_in_path, obj_ids))
 
     for obj_id in object_ids_in_path:
-        closest_pt = min(points[obj_id], key=lambda p: dist(p))
+        closest_pt = min(get_points(obj_id), key=lambda p: dist(p))
         obj_vel = avg_velocity(vels[obj_id])
         if not is_safe(ego_vel, closest_pt, obj_vel):
             msg = f"The object with ID {obj_id} is not safe"
@@ -154,11 +163,11 @@ def interlock(grid, ground_id, traversal_orders, image, vel_threshold, image_sca
 
     ground_id: object ID corresponding to the ground object
 
-    traversal_orders: list of traversal_orders
+    traversal_orders: list of tuples, each of the form (obj_id, traversal_order)
     traversal_order: list of tuples, each of the form (point_a, point_b)
             where point_a is the next point in the traversal order
             and point_b is the point close to point_a
-    point: tuple (x, y, z) is the position of the point
+    point: tuple (i, j, k) are the indices such that grid[j][i][1][k] gives the point
 
     vel_threshold: maximum difference in velocity a point can have
             from the average velocity of that object for it to be "the same"
@@ -183,20 +192,23 @@ def interlock(grid, ground_id, traversal_orders, image, vel_threshold, image_sca
         import open3d
         pcd = open3d.geometry.PointCloud()
         # for wrong_obj in wrong_objs:
-        pcd.points = open3d.utility.Vector3dVector(np.array(points[wrong_obj]))
+        wrong_points = get_points(wrong_obj, grid)
+        pcd.points = open3d.utility.Vector3dVector(np.array(wrong_points))
         open3d.visualization.draw_geometries([pcd])
+
+        obj_ids = {cell[0] for row in grid for cell in row}
 
         pcd = open3d.geometry.PointCloud()
         pcd_points = None
-        for obj in points:
-            np_points = np.array(points[obj])
+        for obj in obj_ids:
+            np_points = np.array(get_points(obj, grid))
             pcd_points = np.concatenate((pcd_points, np_points), axis=0) if pcd_points is not None else np_points
         pcd.points = open3d.utility.Vector3dVector(pcd_points)
         open3d.visualization.draw_geometries([pcd])
 
         # for wrong_obj in wrong_objs:
         cur_img = np.zeros((600, 800, 3))
-        for obj in points:
+        for obj in obj_ids:
             if obj == wrong_obj:
                 color = [1, 0, 0]
             else:
@@ -207,7 +219,7 @@ def interlock(grid, ground_id, traversal_orders, image, vel_threshold, image_sca
         plt.imshow(cur_img)
         plt.show()
 
-    result = check_traversal_order(points, traversal_orders, pos_threshold)
+    result = check_traversal_order(grid, traversal_orders, pos_threshold)
     if not result[0]:
         print("Traversal order check failed")
         display_point_cloud(result[1])
@@ -225,11 +237,11 @@ def interlock(grid, ground_id, traversal_orders, image, vel_threshold, image_sca
         display_point_cloud(result[1])
         return False
 
-    if not check_ground_pts_on_ground(points, ground_id):
+    if not check_ground_pts_on_ground(grid, ground_id):
         print("Ground check failed")
         return False
 
-    if not check_predicates(points, vels, ego_vel):
+    if not check_predicates(grid, vels, ego_vel):
         print("Predicates check failed")
         return False
 
