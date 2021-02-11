@@ -5,6 +5,7 @@ from LiDAR.process_points import interlock
 import math
 import numpy as np
 import open3d as o3d
+import datetime
 
 from queue import Queue
 from queue import Empty
@@ -258,9 +259,9 @@ class Lidarcamera:
 
         down_sampled_segmentation_image = self.downsample_image(segmentation_image, 800, 600, DOWNSAMPLE_FACTOR)
         labeled_image = self.label(down_sampled_segmentation_image)
-        object_id_to_lidar_pts = self.get_objects_with_lidar_pts(labeled_image, down_sampled_segmentation_image, segmentation_image, DOWNSAMPLE_FACTOR)
+        grid = self.get_objects_with_lidar_pts(labeled_image, down_sampled_segmentation_image, segmentation_image, DOWNSAMPLE_FACTOR)
         #self.show_points(segmentation_image, labeled_image, DOWNSAMPLE_FACTOR)
-        dic = {"object_pts": object_id_to_lidar_pts,
+        dic = {"grid": grid,
                 "labeled_image": labeled_image,
                 "factor": DOWNSAMPLE_FACTOR}
 
@@ -390,7 +391,7 @@ class Lidarcamera:
             while (True):
                 self.world.tick()
                 self.frame += 1
-                #self.sensor_processor(self.frame)
+                self.sensor_processor(self.frame)
                 strs = []
                 locs = []
 
