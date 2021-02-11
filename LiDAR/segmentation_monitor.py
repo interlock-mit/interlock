@@ -36,7 +36,7 @@ def check_traversal_order(points, traversal_orders, pos_threshold):
                 d = dist(points[obj][point_a], points[obj][point_b])
                 if d > pos_threshold:
                     msg = f"Points {point_a} and {point_b} are {d} apart, which is too far away"
-                    print(message)
+                    print(msg)
                     return False, obj
     return True, None
 
@@ -169,11 +169,15 @@ def interlock(grid, ground_id, traversal_orders, image, vel_threshold, image_sca
     """
     from traversal import cell_size
     pos_threshold = cell_size * 2 * (3 ** .5)
-    points, vels, image_pos = {}, {}, {}
-    print(len(obj_info))
-    for obj in obj_info:
-        if obj_info[obj]:
-            points[obj], vels[obj], image_pos[obj] = zip(*obj_info[obj])
+    points, vels, image_pos = defaultdict(list), defaultdict(list), defaultdict(list)
+    for j in range(len(grid)):
+        for i in range(len(grid[j])):
+            obj_id, lidar_pts = grid[j][i]
+            for pt in lidar_pts:
+                points[obj_id].append(pt[0])
+                vels[obj_id].append(pt[1])
+                image_pos[obj_id].append(pt[2])
+
 
     def display_point_cloud(wrong_obj):
         import open3d
