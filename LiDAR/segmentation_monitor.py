@@ -142,11 +142,12 @@ def check_predicates(points, vels, ego_vel):
     return True
 
 
-def interlock(obj_info, ground_id, traversal_orders, image, vel_threshold, image_scale_factor, ego_vel):
+def interlock(grid, ground_id, traversal_orders, image, vel_threshold, image_scale_factor, ego_vel):
     """
-    obj_info: dictionary where each key/value pair is an object that maps object ID
-            to a list of points corresponding to that object.
-            each point is a list of the form [loc, vel, image_pos]
+    grid: 2d array of cells where each value is a tuple of the form (obj_id, lidar_points)
+        where obj_id is the unique id corresponding to the object in that cell
+        and lidar_points is a list of 3d lidar points that transform onto that 2d cell
+        where each lidar point is a list of the form [loc, vel, image_pos]
     loc: numpy array of the form (x, y, z)
     vel: numpy array of the form (v_x, v_y, vg_z)
     image_pos: list of the form (x, y)
