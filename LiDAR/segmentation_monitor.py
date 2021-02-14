@@ -10,6 +10,15 @@ MIN_DIST = 10
 DEFAULT_TIMESTEP = .2
 
 
+def add(vec1, vec2):
+    return (vec1[0] + vec2[0], vec1[1] + vec2[1], vec1[2] + vec2[2])
+def mult(vec, factor):
+    return (vec[0] * factor, vec[1] * factor, vec[2] * factor)
+def dist(vec1, vec2):
+    return ((vec1[0]-vec2[0])**2 + (vec1[1]-vec2[1])**2 + (vec1[2]-vec2[2])**2)**.5
+def loc(pos, vel, t):
+    return (pos[0]+t*vel[0], pos[1]+t*vel[1], pos[2]+t*vel[2])
+
 def visualize(filename):
     cloud = o3d.io.read_point_cloud(filename)
     o3d.visualization.draw_geometries([cloud])
@@ -93,10 +102,10 @@ def check_density_spread_all_objs(image_pos, image, image_scale_factor):
     return True, None
 
 
-def check_ground_pts_on_ground(grid, ground_id, height_threshold=0.5):
+def check_ground_pts_on_ground(grid, ground_id, height_threshold=1):
     ground_points = get_points(ground_id, grid)
     for pt in ground_points:
-        z = pt[2]
+        z = pt[0][2]
         if z > height_threshold:
             msg = f"The point {pt} is not on the ground"
             print(msg)
@@ -135,13 +144,12 @@ def check_predicates(grid, vels, ego_vel):
     """
     For now assuming a straight path but eventually we can incorporate curved or more complex paths
     """
-    point_in_path = lambda x: (-2 < x[0] < 2) and x[1] > 0 and x[2] > -1.2
+    point_in_path = lambda x: (-2 < x[0][0] < 2) and x[0][1] > 0 and x[0][2] > -1.2
     obj_in_path = lambda x: any(point_in_path(p) for p in get_points(x, grid))
     obj_ids = {cell[0] for row in grid for cell in row}
     object_ids_in_path = list(filter(obj_in_path, obj_ids))
-
     for obj_id in object_ids_in_path:
-        closest_pt = min(get_points(obj_id), key=lambda p: dist(p))
+        closest_pt = min(get_points(obj_id, grid), key=lambda p: dist(p[0]))[0]
         obj_vel = avg_velocity(vels[obj_id])
         if not is_safe(ego_vel, closest_pt, obj_vel):
             msg = f"The object with ID {obj_id} is not safe"
@@ -176,7 +184,7 @@ def interlock(grid, ground_id, traversal_orders, image, vel_threshold, image_sca
 
     ego_vel: tuple (v_x, v_y, v_z) of the ego vehicle's current velocity
     """
-    from traversal import cell_size
+    from LiDAR.v2_traversal import cell_size
     pos_threshold = cell_size * 2 * (3 ** .5)
     points, vels, image_pos = defaultdict(list), defaultdict(list), defaultdict(list)
     for j in range(len(grid)):
@@ -231,11 +239,11 @@ def interlock(grid, ground_id, traversal_orders, image, vel_threshold, image_sca
         display_point_cloud(result[1])
         return False
 
-    result = check_density_spread_all_objs(image_pos, image, image_scale_factor)
+    """result = check_density_spread_all_objs(image_pos, image, image_scale_factor)
     if not result[0]:
         print("Density/spread check failed", result[1])
         display_point_cloud(result[1])
-        return False
+        return False"""
 
     if not check_ground_pts_on_ground(grid, ground_id):
         print("Ground check failed")

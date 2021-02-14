@@ -60,8 +60,8 @@ def within_bounding_box(pos, bounding_box):
     (x_min, x_max, y_min, y_max, z_min, z_max) = bounding_box
     return x_min <= pos[0] <= x_max and y_min <= pos[1] <= y_max and z_min <= pos[2] <= z_max
 
-def get_object_points(all_lidar_points, bounding_box):
-    return list(filter(all_lidar_points, lambda (pos, vel): within_bounding_box(pos, bounding_box)))
+#def get_object_points(all_lidar_points, bounding_box):
+#    return list(filter(all_lidar_points, lambda (pos, vel): within_bounding_box(pos, bounding_box)))
 
 def is_safe(ego_pos, ego_vel, other_pos, other_vel, timestep=DEFAULT_TIMESTEP, min_dist=MIN_DIST, max_decel=MAX_DECEL):
     cur_speed = dist(ego_vel, (0,0,0))

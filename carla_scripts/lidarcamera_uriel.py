@@ -6,6 +6,7 @@ import math
 import numpy as np
 import open3d as o3d
 import datetime
+from LiDAR.segmentation_pipeline import pipeline
 
 from queue import Queue
 from queue import Empty
@@ -22,8 +23,8 @@ VIRIDIS = np.array(cm.get_cmap('viridis').colors)
 VID_RANGE = np.linspace(0.0,1.0, VIRIDIS.shape[0])
 
 FILTER = True
-RECORD = True
-SAVE_RATE = 5
+RECORD = False
+SAVE_RATE = 1
 TIMESTEP_DELTA = .05
 
 TAG = {"unlabeled": 0,
@@ -119,6 +120,16 @@ class Lidarcamera:
         self.image_queue.put(im_array)
 
     def lidar_listener(self, data):
+        """channel = 0
+        points_seen = 0
+        points = data.get_point_count(channel)
+        last_angle = None
+        for pt in data:
+            points_seen += 1
+            print("channel: ", channel, " angle: ", math.degrees(math.atan(math.sqrt(pt.point.x**2 + pt.point.y**2)/pt.point.z)))
+            if points == points_seen:
+                channel += 1
+                points = data.get_point_count(channel)"""
         data = np.array([[pt.point.x, pt.point.y, pt.point.z, pt.object_idx] for pt in data])
         self.lidar_queue.put(data)
     
@@ -192,7 +203,7 @@ class Lidarcamera:
         return velocities, colors
 
     def get_objects_with_lidar_pts(self, labeled_image, downscaled_segmented_img, segmented_img, factor):
-        grid = [[[label] for label in row] for row in labeled_image]
+        grid = [[[label, []] for label in row] for row in labeled_image]
         """object_to_lidar_pts = {}
         for obj in regionprops(labeled_image):
             if obj.area >= 500 / (factor * factor):
@@ -207,8 +218,8 @@ class Lidarcamera:
             if true_segmented_label == segmented_label and object_label in object_to_lidar_pts:
                 object_to_lidar_pts[object_label].append([lidar_pts[i], velocities[i], [x,y]])
             """
-            if true_segmented_label == segmented_label and len(grid[x//factor][y//factor]) == 1:
-                grid[x//factor][y//factor].append([lidar_pts[i], velocities[i]])
+            if true_segmented_label == segmented_label and len(grid[x//factor][y//factor][1]) == 0:
+                grid[x//factor][y//factor][1].append([lidar_pts[i][:3], velocities[i], [x,y]])
         #print([[int(len(x) > 1) for x in row] for row in grid])
         return grid
         
@@ -241,7 +252,7 @@ class Lidarcamera:
 
     def label(self, segmentation_img):
         segmentation_img = np.copy(segmentation_img)
-        ground_indices = (segmentation_img == TAG["roadline"]) | (segmentation_img == TAG["sidewalk"]) | (segmentation_img == TAG["road"])
+        ground_indices = (segmentation_img == TAG["roadline"]) | (segmentation_img == TAG["sidewalk"]) | (segmentation_img == TAG["road"]) | (segmentation_img == TAG["ground"])
         segmentation_img[ground_indices] = TAG["road"]
         return label(segmentation_img, connectivity=1)
 
@@ -258,27 +269,50 @@ class Lidarcamera:
         self.points = lidar_cloud
 
         down_sampled_segmentation_image = self.downsample_image(segmentation_image, 800, 600, DOWNSAMPLE_FACTOR)
+        ground_index = [(row, column) for row in range(len(down_sampled_segmentation_image)) for column in range(len(down_sampled_segmentation_image[row])) if down_sampled_segmentation_image[row][column] == TAG["road"]][0]
         labeled_image = self.label(down_sampled_segmentation_image)
+
+        obj_id_to_seg = {labeled_image[row, column]: down_sampled_segmentation_image[row, column] for row in range(len(labeled_image)) for column in range(len(labeled_image[row]))}
+        ground_id = [id_ for id_ in obj_id_to_seg if obj_id_to_seg[id_] == TAG["road"]][0] # change to have multiple ground id's
+
         grid = self.get_objects_with_lidar_pts(labeled_image, down_sampled_segmentation_image, segmentation_image, DOWNSAMPLE_FACTOR)
         #self.show_points(segmentation_image, labeled_image, DOWNSAMPLE_FACTOR)
         dic = {"grid": grid,
                 "labeled_image": labeled_image,
                 "factor": DOWNSAMPLE_FACTOR}
-
+        ego_vel = self.ego_vehicle.get_velocity() 
+        pipeline(grid, labeled_image, DOWNSAMPLE_FACTOR, [ego_vel.x, ego_vel.y, ego_vel.z], ground_id)
         self.count += 1
         if self.count % SAVE_RATE == 0 and RECORD:
             #fil = open(f"lidar/car_{frame_number}", 'ab')
             #pickle.dump(dic, fil)
             #fil.close()
             #Image.fromarray(labeled_image.astype(np.uint8)).save(f"lidar/labeled_image_{frame_number}.png")
-            Image.fromarray(rgb_image).save(f"lidar/rgb_im_{frame_number}.png")
+            check_img = np.zeros(rgb_image.shape, dtype=np.uint8)
+            id_to_color = {}
+            for j in range(len(grid)):
+                for i in range(len(grid[j])):
+                    cell = grid[j][i]
+                    if len(cell[1]) == 0:
+                        continue
+                    label, lidar_pt = cell
+                    x,y = lidar_pt[0][2]
+                    """if label != grid[max(0,j-1)][i][0] or label != grid[j][max(0,i-1)][0]:
+                        check_img[x,y] = [255,255,255]"""
+                    if label not in id_to_color:
+                        id_to_color[label] = list(np.random.random(size=3) * 256) 
+                    check_img[x,y] = id_to_color[label]
+
+            pic =  np.hstack((rgb_image, check_img))
+            Image.fromarray(pic).save(f"lidar/pic_{frame_number}.png")
+            """Image.fromarray(rgb_image).save(f"lidar/rgb_im_{frame_number}.png")
             Image.fromarray(segmentation_image).save(f"lidar/segmentation_{frame_number}.png")
             Image.fromarray(down_sampled_segmentation_image).save(f"lidar/downsampled_{frame_number}.png")
             rgb_pts, velocities, lidar_pts = self.get_rgb_point_velocities()
             for i in range(len(rgb_pts)):
                 x,y,_ = rgb_pts[i].astype(np.int)
                 segmentation_image[x,y] = 0
-            Image.fromarray(segmentation_image).save(f"lidar/rgb_im_lidar_{frame_number}.png")
+            Image.fromarray(segmentation_image).save(f"lidar/rgb_im_lidar_{frame_number}.png")"""
             pass
         
         # some weird transformations have to happen for the visualizer:
