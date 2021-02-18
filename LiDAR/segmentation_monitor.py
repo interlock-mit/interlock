@@ -179,7 +179,6 @@ def check_predicates(test, grid, vels, ego_vel, ground_ids, image_pos):
             test["success"] = False
             test["error_msg"] = f"The object with ID {obj_id} is not safe"
             test["bad_points"].extend(image_pos[obj_id])
-            return
 
 
 def interlock(grid, ground_ids, traversal_orders, image, vel_threshold, image_scale_factor, ego_vel):
