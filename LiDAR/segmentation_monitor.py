@@ -126,22 +126,42 @@ def is_safe(ego_vel, other_pos, other_vel, timestep=DEFAULT_TIMESTEP, min_dist=M
         return (helper(x), helper(y), helper(z))
 
     def helper(ego_accel, other_accel):
-        cur_time = 0
-        cur_pos = (0, 0, 0)
-        cur_vel = ego_vel
-        other_cur_pos, other_cur_vel = other_pos, other_vel
-        while cur_time < stopping_time:
-            if dist(cur_pos, other_cur_pos) < min_dist:
-                return False
-            cur_vel = decel(cur_vel, ego_accel * timestep)
-            other_cur_vel = decel(other_cur_vel, other_accel * timestep)
-            cur_pos = add(mult(cur_vel, timestep), cur_pos)
-            other_cur_pos = add(mult(other_cur_vel, timestep), other_cur_pos)
-            cur_time += timestep
-        return True
+        x_e, y_e, z_e = (0, 0, 0) # ego position
+        x_o, y_o, z_o = other_pos # other position
+        v_x_e, v_y_e, v_z_e = ego_vel # ego velocity
+        v_x_o, v_y_o, v_z_o = other_vel # other velocity
+        a_x_e, a_y_e, a_z_e = ego_accel # ego acceleration
+        a_x_o, a_y_o, a_z_o = other_accel # other acceleration
+        
+        # polynomial equation of the form at^2 + bt + c = 0, minimized when t = -b/2a
+        t_closest_x = abs((v_x_e - v_x_o)/(a_x_e - a_x_o))
+        if t_closest_x > stopping_time: # enough time to stop
+            return True
+        else:
+            closest_x_dist = 0.5*(a_x_e - a_x_o)*t_closest_x**2 + t_closest_x*(v_x_e - v_x_o) + x_e - x_o
+            if closest_x_dist > min_dist: # closest x distance is large enough
+                return True
 
-    return helper(max_decel, 0) and helper(max_decel, max_decel)
+        t_closest_y = abs((v_y_e - v_y_o)/(a_y_e - a_y_o))
+        if t_closest_y > stopping_time: # enough time to stop
+            return True
+        else:
+            closest_y_dist = 0.5*(a_y_e - a_y_o)*t_closest_y**2 + t_closest_y*(v_y_e - v_y_o) + y_e - y_o
+            if closest_y_dist > min_dist: # closest y distance is large enough
+                return True
 
+        t_closest_z = abs((v_z_e - v_z_o)/(a_z_e - a_z_o))
+        if t_closest_z > stopping_time: # enough time to stop
+            return True
+        else:
+            closest_z_dist = 0.5*(a_z_e - a_z_o)*t_closest_z**2 + t_closest_z*(v_z_e - v_z_o) + z_e - z_o
+            if closest_z_dist > min_dist: # closest y distance is large enough
+                return True
+    
+        return False
+
+    return helper(3*(max_decel,), 3*(0,)) and helper(3*(max_decel,), 3*(max_decel,))
+)
 
 def check_predicates(grid, vels, ego_vel):
     """
