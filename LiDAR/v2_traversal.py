@@ -86,12 +86,15 @@ def get_traversal_orders(grid):
                 if indices in density[obj_id]:
                     if density[obj_id][indices] is not None:
                         yield indices
-            if idxs[idx] < lens[obj_id][idx] - 1:
-                alts[idx] = 1
-                indices = (idxs[0] + alts[0], idxs[1] + alts[1], idxs[2] + alts[2])
-                if indices in density[obj_id]:
-                    if density[obj_id][indices] is not None:
-                        yield indices
+            try:
+                if idxs[idx] < lens[obj_id][idx] - 1:
+                    alts[idx] = 1
+                    indices = (idxs[0] + alts[0], idxs[1] + alts[1], idxs[2] + alts[2])
+                    if indices in density[obj_id]:
+                        if density[obj_id][indices] is not None:
+                            yield indices
+            except:
+                pass
 
 
     # BFS to find traversal order 

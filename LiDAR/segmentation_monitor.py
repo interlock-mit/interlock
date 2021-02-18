@@ -36,26 +36,27 @@ def get_points(obj_id, grid):
     return points
 
 
-def check_traversal_order(grid, traversal_orders, pos_threshold):
+def check_traversal_order(test, grid, traversal_orders):
+    from LiDAR.v2_traversal import cell_size
+    pos_threshold = cell_size * 2 * (3 ** .5)
     for (obj_id, traversal_order) in traversal_orders:
         if traversal_order is None or len(traversal_order) == 0:
             continue
         seen = {traversal_order[0][0]}
         for (point_a, point_b) in traversal_order[1:]:
             if point_b not in seen:
-                msg = f"The traversal order is not valid, because we have not yet seen the point {point_b}"
-                print(msg)
-                return False
+                test["success"] = False
+                test["error_msg"] = f"The traversal order is not valid, because we have not yet seen the point {point_b}"
+                return
             else:
                 seen.add(point_a)
                 i_a, j_a, k_a = point_a
                 i_b, j_b, k_b = point_b
                 d = dist(grid[j_a][i_a][1][k_a][0], grid[j_b][i_b][1][k_b][0])
                 if d > pos_threshold:
-                    msg = f"Points {point_a} and {point_b} are {d} apart, which is too far away"
-                    print(msg)
-                    return False, obj_id
-    return True, None
+                    test["success"] = False
+                    test["error_msg"] = f"Points {point_a} and {point_b} are {d} apart, which is too far away"
+                    # TODO: should add point_a and point_b to bad_points, but we need to add 2d x,y coords to do that
 
 
 def avg_velocity(obj):
@@ -68,49 +69,51 @@ def avg_velocity(obj):
     return sum_v_x/len(obj), sum_v_y/len(obj), sum_v_z/len(obj)
 
 
-def check_same_velocity(obj_velocities, vel_threshold):
+def check_same_velocity(test, obj_velocities, vel_threshold):
     for obj, vels in obj_velocities.items():
         if vels is None:
             continue
-        # print(vels)
         avg_v_x, avg_v_y, avg_v_z = avg_velocity(vels)
         for point_vel in vels:
             v_x, v_y, v_z = point_vel
             if abs(v_x - avg_v_x) > vel_threshold[0] or abs(v_y - avg_v_y) > vel_threshold[1] or abs(v_z - avg_v_z) > vel_threshold[2]:
-                msg = f"The velocity {point_vel} is too different from the average velocity, which is {(avg_v_x, avg_v_y, avg_v_z)}"
-                print(msg)
-                return False, obj
-    return True, None
+                test["success"] = False
+                test["error_msg"] = f"The velocity {point_vel} is too different from the average velocity, which is {(avg_v_x, avg_v_y, avg_v_z)}"
+                # TODO: should also add points to bad_points
 
 
-def check_density_spread_all_objs(image_pos, image, image_scale_factor):
+def check_density_spread_all_objs(test, image_pos, image, image_scale_factor):
+    from LiDAR.lidar_density_location import LIDAR_GRID
+
     density = [[set() for i in range(image.shape[1])] for j in range(image.shape[0])]
-    print(len(image_pos))
     for obj in image_pos:
         for point in image_pos[obj]:
             density[point[0]//image_scale_factor][point[1]//image_scale_factor].add(obj)
     
     bad_objs = set()
-    for i in range(len(density)):
-        for j in range(len(density[i])):
-            if image[i][j] not in density[i][j]:
+    for i in range(len(LIDAR_GRID)):
+        for j in range(len(LIDAR_GRID[i])):
+            if LIDAR_GRID[i][j] == 1 and image[i][j] not in density[i][j]:
+                test["success"] = False
+                # TODO: error msg
+                # TODO: should also add points to bad_points
                 bad_objs.add(image[i][j])
-                return False, image[i][j]
     # if bad_objs:
     #     return False, list(bad_objs)
     # # print(density)
-    return True, None
+    return True, []
 
 
-def check_ground_pts_on_ground(grid, ground_id, height_threshold=1):
-    ground_points = get_points(ground_id, grid)
-    for pt in ground_points:
-        z = pt[0][2]
-        if z > height_threshold:
-            msg = f"The point {pt} is not on the ground"
-            print(msg)
-            return False
-    return True
+def check_ground_pts_on_ground(test, grid, ground_ids, height_threshold=-0.5):
+    bad_points = []
+    for ground_id in ground_ids:
+        ground_points = get_points(ground_id, grid)
+        for pt in ground_points:
+            z = pt[0][2]
+            if z > height_threshold:
+                test["success"] = False
+                test["error_msg"] = f"The point {pt} is not on the ground"
+                test["bad_points"].append(pt)
 
 
 def is_safe(ego_vel, other_pos, other_vel, timestep=DEFAULT_TIMESTEP, min_dist=MIN_DIST, max_decel=MAX_DECEL):
@@ -184,8 +187,6 @@ def interlock(grid, ground_id, traversal_orders, image, vel_threshold, image_sca
 
     ego_vel: tuple (v_x, v_y, v_z) of the ego vehicle's current velocity
     """
-    from LiDAR.v2_traversal import cell_size
-    pos_threshold = cell_size * 2 * (3 ** .5)
     points, vels, image_pos = defaultdict(list), defaultdict(list), defaultdict(list)
     for j in range(len(grid)):
         for i in range(len(grid[j])):
@@ -200,7 +201,7 @@ def interlock(grid, ground_id, traversal_orders, image, vel_threshold, image_sca
         import open3d
         pcd = open3d.geometry.PointCloud()
         # for wrong_obj in wrong_objs:
-        wrong_points = get_points(wrong_obj, grid)
+        wrong_points = [point[0] for point in get_points(wrong_obj, grid)]
         pcd.points = open3d.utility.Vector3dVector(np.array(wrong_points))
         open3d.visualization.draw_geometries([pcd])
 
@@ -209,7 +210,7 @@ def interlock(grid, ground_id, traversal_orders, image, vel_threshold, image_sca
         pcd = open3d.geometry.PointCloud()
         pcd_points = None
         for obj in obj_ids:
-            np_points = np.array(get_points(obj, grid))
+            np_points = np.array([point[0] for point in get_points(obj, grid)])
             pcd_points = np.concatenate((pcd_points, np_points), axis=0) if pcd_points is not None else np_points
         pcd.points = open3d.utility.Vector3dVector(pcd_points)
         open3d.visualization.draw_geometries([pcd])
@@ -227,33 +228,74 @@ def interlock(grid, ground_id, traversal_orders, image, vel_threshold, image_sca
         plt.imshow(cur_img)
         plt.show()
 
-    result = check_traversal_order(grid, traversal_orders, pos_threshold)
+    test_suite = {
+        "Spatial Check": {
+            "function": lambda test: check_traversal_order(test, grid, traversal_orders),
+            "success": True,
+            "error_msg": "",
+            "bad_points": []
+        },
+        "Velocity Check": {
+            "function": lambda test: check_same_velocity(test, vels, vel_threshold),
+            "success": True,
+            "error_msg": "",
+            "bad_points": []
+        },
+        "Density Check": {
+            "function": lambda test: check_density_spread_all_objs(test, image_pos, image, image_scale_factor),
+            "success": True,
+            "error_msg": "",
+            "bad_points": []
+        },
+        "Ground Check": {
+            "function": lambda test: check_ground_pts_on_ground(test, grid, ground_id),
+            "success": True,
+            "error_msg": "",
+            "bad_points": []
+        },
+        "Collision Check": {
+            "function": lambda test: "todo",
+            "success": False,
+            "error_msg": "",
+            "bad_points": []
+        },
+    }
+    for check in test_suite:
+        test = test_suite[check]
+        test["function"](test)
+    return test_suite
+
+    """result = check_traversal_order(grid, traversal_orders)
+    success = True
+    bad_points = []
     if not result[0]:
         print("Traversal order check failed")
-        display_point_cloud(result[1])
-        return False
+        success = False
+        bad_points.extend(result[1])
 
     result = check_same_velocity(vels, vel_threshold)
     if not result[0]:
         print("Same velocity check failed")
-        display_point_cloud(result[1])
-        return False
+        success = False
+        bad_points.extend(result[1])
 
-    """result = check_density_spread_all_objs(image_pos, image, image_scale_factor)
+    result = check_density_spread_all_objs(image_pos, image, image_scale_factor)
     if not result[0]:
         print("Density/spread check failed", result[1])
-        display_point_cloud(result[1])
-        return False"""
+        success = False
+        bad_points.extend(result[1])
 
     if not check_ground_pts_on_ground(grid, ground_id):
         print("Ground check failed")
-        return False
+        success = False
+        bad_points.extend(result[1])
 
     if not check_predicates(grid, vels, ego_vel):
         print("Predicates check failed")
-        return False
-
-    return True
+        success = False
+    
+    print("Success: ", success)
+    return success, bad_points"""
 
 
 # if __name__ == "__main__":
