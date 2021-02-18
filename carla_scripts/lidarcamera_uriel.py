@@ -136,7 +136,7 @@ class Lidarcamera:
                 diff = angle-last_angle
             if diff > 0.4:
                 phi = math.degrees(math.atan(math.sqrt(pt.point.x**2 + pt.point.y**2)/pt.point.z))
-                R = 1000
+                R = 10000
                 for shift in range(1, int(diff/0.4) + 1):
                     new_angle = last_angle + (shift * 0.4)
                     x = R * math.sin(math.radians(phi)) * math.cos(math.radians(new_angle))
@@ -294,7 +294,7 @@ class Lidarcamera:
         labeled_image = self.label(down_sampled_segmentation_image)
 
         obj_id_to_seg = {labeled_image[row, column]: down_sampled_segmentation_image[row, column] for row in range(len(labeled_image)) for column in range(len(labeled_image[row]))}
-        ground_id = [id_ for id_ in obj_id_to_seg if obj_id_to_seg[id_] == TAG["road"]] # change to have multiple ground id's
+        ground_ids = [id_ for id_ in obj_id_to_seg if obj_id_to_seg[id_] == TAG["road"]] # change to have multiple ground id's
         #print(obj_id_to_seg)
 
         grid = self.get_objects_with_lidar_pts(labeled_image, down_sampled_segmentation_image, segmentation_image, DOWNSAMPLE_FACTOR)
@@ -303,9 +303,9 @@ class Lidarcamera:
                 "labeled_image": labeled_image,
                 "factor": DOWNSAMPLE_FACTOR}
         ego_vel = self.ego_vehicle.get_velocity() 
-        result = pipeline(grid, labeled_image, DOWNSAMPLE_FACTOR, [ego_vel.x, ego_vel.y, ego_vel.z], ground_id)
-        for test in result:
-            print(test, result[test])
+        result = pipeline(grid, labeled_image, DOWNSAMPLE_FACTOR, [ego_vel.x, ego_vel.y, ego_vel.z], ground_ids)
+        #for test in result:
+        #    print(test, result[test])
         self.count += 1
         if self.count % SAVE_RATE == 0 and RECORD:
             #fil = open(f"lidar/car_{frame_number}", 'ab')
@@ -315,6 +315,7 @@ class Lidarcamera:
             check_img = np.zeros(rgb_image.shape, dtype=np.uint8)
             id_to_color = {}
             delta = 1
+            rgb_image_copy = np.copy(rgb_image)
             for j in range(len(grid)):
                 for i in range(len(grid[j])):
                     cell = grid[j][i]
@@ -324,24 +325,25 @@ class Lidarcamera:
                     x,y = lidar_pt[0][2]
                     if label not in id_to_color:
                         id_to_color[label] = list(np.random.random(size=3) * 256)
-                    if label != grid[max(0,j-1)][i][0] or label != grid[j][max(0,i-1)][0]:
+                    #if label != grid[max(0,j-1)][i][0] or label != grid[j][max(0,i-1)][0]:
+                    if True:
                         for dx in range(x-delta, x+delta+1):
                             for dy in range(y-delta, y+delta+1):
-                                check_img[max(min(dx,rgb_image.shape[0]-1),0),max(min(dy,rgb_image.shape[1]-1),0)] = [255,255,255]
+                                rgb_image_copy[max(min(dx,rgb_image.shape[0]-1),0),max(min(dy,rgb_image.shape[1]-1),0)] = [255,255,255]
             text_X = 10
             text_Y = 30
             for test in result:
                 color = (0,255,0) if result[test]["success"] else (255,0,0)
-                cv2.putText(check_img, test, (text_X,text_Y), cv2.FONT_HERSHEY_SIMPLEX, 1, color, 2)
+                cv2.putText(rgb_image_copy, test, (text_X,text_Y), cv2.FONT_HERSHEY_SIMPLEX, 1, color, 2)
                 text_Y += 30
                 for pt in result[test]["bad_points"]:
-                    x,y = pt[2]
+                    x,y = pt
                     #x //= DOWNSAMPLE_FACTOR
                     #y //= DOWNSAMPLE_FACTOR
                     for dx in range(x-delta, x+delta+1):
                         for dy in range(y-delta, y+delta+1):
-                            check_img[max(min(dx,rgb_image.shape[0]-1),0),max(min(dy,rgb_image.shape[1]-1),0)] = [255,0,0]
-            pic =  np.hstack((rgb_image, check_img))
+                            rgb_image_copy[max(min(dx,rgb_image.shape[0]-1),0),max(min(dy,rgb_image.shape[1]-1),0)] = [255,0,0]
+            pic =  np.hstack((rgb_image, rgb_image_copy))
             Image.fromarray(pic).save(f"lidar/pic_{frame_number}.png")
             """Image.fromarray(rgb_image).save(f"lidar/rgb_im_{frame_number}.png")
             Image.fromarray(segmentation_image).save(f"lidar/segmentation_{frame_number}.png")

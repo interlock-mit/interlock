@@ -42,7 +42,7 @@ def combine_img_lidar(obj_info, image, scale_factor):
 
 pcd = open3d.geometry.PointCloud()
 pcd_points = None
-def pipeline(grid, image, scale_factor, ego_vel, ground_id):
+def pipeline(grid, image, scale_factor, ego_vel, ground_ids):
     # keys: [1, 5, 6, 7, 8, 9, 11, 13, 15, 16, 17, 18, 22, 24, 25, 27, 33, 35, 36, 38, 39, 40]
     """data = pickle.load(pklfile)
     obj_info = data["object_pts"]
@@ -52,7 +52,7 @@ def pipeline(grid, image, scale_factor, ego_vel, ground_id):
     # traversal_orders = get_traversal_orders(obj_info)
     grid = combine_img_lidar(obj_info, image, scale_factor)"""
     traversal_orders = get_traversal_orders(grid)
-    return interlock(grid, ground_id, traversal_orders, image, (10,10,10), scale_factor, ego_vel)
+    return interlock(grid, ground_ids, traversal_orders, image, (10,10,10), scale_factor, ego_vel)
 
     # for key in obj:
     #     print(key)

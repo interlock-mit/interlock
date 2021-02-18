@@ -69,7 +69,7 @@ def avg_velocity(obj):
     return sum_v_x/len(obj), sum_v_y/len(obj), sum_v_z/len(obj)
 
 
-def check_same_velocity(test, obj_velocities, vel_threshold):
+def check_same_velocity(test, obj_velocities, vel_threshold, image_pos):
     for obj, vels in obj_velocities.items():
         if vels is None:
             continue
@@ -79,7 +79,7 @@ def check_same_velocity(test, obj_velocities, vel_threshold):
             if abs(v_x - avg_v_x) > vel_threshold[0] or abs(v_y - avg_v_y) > vel_threshold[1] or abs(v_z - avg_v_z) > vel_threshold[2]:
                 test["success"] = False
                 test["error_msg"] = f"The velocity {point_vel} is too different from the average velocity, which is {(avg_v_x, avg_v_y, avg_v_z)}"
-                # TODO: should also add points to bad_points
+                test["bad_points"].extend(image_pos[obj])
 
 
 def check_density_spread_all_objs(test, image_pos, image, image_scale_factor):
@@ -113,7 +113,7 @@ def check_ground_pts_on_ground(test, grid, ground_ids, height_threshold=-0.5):
             if z > height_threshold:
                 test["success"] = False
                 test["error_msg"] = f"The point {pt} is not on the ground"
-                test["bad_points"].append(pt)
+                test["bad_points"].append(pt[2])
 
 
 def is_safe(ego_vel, other_pos, other_vel, timestep=DEFAULT_TIMESTEP, min_dist=MIN_DIST, max_decel=MAX_DECEL):
@@ -161,9 +161,8 @@ def is_safe(ego_vel, other_pos, other_vel, timestep=DEFAULT_TIMESTEP, min_dist=M
         return False
 
     return helper(3*(max_decel,), 3*(0,)) and helper(3*(max_decel,), 3*(max_decel,))
-)
 
-def check_predicates(grid, vels, ego_vel):
+def check_predicates(test, grid, vels, ego_vel, ground_ids, image_pos):
     """
     For now assuming a straight path but eventually we can incorporate curved or more complex paths
     """
@@ -172,17 +171,18 @@ def check_predicates(grid, vels, ego_vel):
     obj_ids = {cell[0] for row in grid for cell in row}
     object_ids_in_path = list(filter(obj_in_path, obj_ids))
     for obj_id in object_ids_in_path:
+        if obj_id in ground_ids:
+            continue
         closest_pt = min(get_points(obj_id, grid), key=lambda p: dist(p[0]))[0]
         obj_vel = avg_velocity(vels[obj_id])
         if not is_safe(ego_vel, closest_pt, obj_vel):
-            msg = f"The object with ID {obj_id} is not safe"
-            print(msg)
-            return False
+            test["success"] = False
+            test["error_msg"] = f"The object with ID {obj_id} is not safe"
+            test["bad_points"].extend(image_pos[obj_id])
+            return
 
-    return True
 
-
-def interlock(grid, ground_id, traversal_orders, image, vel_threshold, image_scale_factor, ego_vel):
+def interlock(grid, ground_ids, traversal_orders, image, vel_threshold, image_scale_factor, ego_vel):
     """
     grid: 2d array of cells where each value is a tuple of the form (obj_id, lidar_points)
         where obj_id is the unique id corresponding to the object in that cell
@@ -256,7 +256,7 @@ def interlock(grid, ground_id, traversal_orders, image, vel_threshold, image_sca
             "bad_points": []
         },
         "Velocity Check": {
-            "function": lambda test: check_same_velocity(test, vels, vel_threshold),
+            "function": lambda test: check_same_velocity(test, vels, vel_threshold, image_pos),
             "success": True,
             "error_msg": "",
             "bad_points": []
@@ -268,14 +268,14 @@ def interlock(grid, ground_id, traversal_orders, image, vel_threshold, image_sca
             "bad_points": []
         },
         "Ground Check": {
-            "function": lambda test: check_ground_pts_on_ground(test, grid, ground_id),
+            "function": lambda test: check_ground_pts_on_ground(test, grid, ground_ids),
             "success": True,
             "error_msg": "",
             "bad_points": []
         },
         "Collision Check": {
-            "function": lambda test: "todo",
-            "success": False,
+            "function": lambda test: check_predicates(test, grid, vels, ego_vel, ground_ids, image_pos),
+            "success": True,
             "error_msg": "",
             "bad_points": []
         },
