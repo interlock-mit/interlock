@@ -33,15 +33,15 @@ def get_traversal_orders(grid):
         min_row_pts = []
         for row in grid:
             idx_pts = [pt[0][idx] for cell in row for pt in cell[1] if cell[0] == obj_id]
-            if any(idx_pts): min_row_pts.append(min(idx_pts))
-        return min(min_row_pts) if any(min_row_pts) else None
+            if len(idx_pts) > 0: min_row_pts.append(min(idx_pts))
+        return min(min_row_pts) if len(min_row_pts) > 0 else None
 
     def get_max(idx, obj_id):
         max_row_pts = []
         for row in grid:
             idx_pts = [pt[0][idx] for cell in row for pt in cell[1] if cell[0] == obj_id]
-            if any(idx_pts): max_row_pts.append(max(idx_pts))
-        return max(max_row_pts) if any(max_row_pts) else None
+            if len(idx_pts) > 0: max_row_pts.append(max(idx_pts))
+        return max(max_row_pts) if len(max_row_pts) > 0 else None
 
     def get_len(idx, obj_id, min_vals, max_vals):
         return int((max_vals[idx] - min_vals[idx])/cell_size) + 1
@@ -97,7 +97,8 @@ def get_traversal_orders(grid):
     # BFS to find traversal order 
     def bfs(obj_id):
         if len(density[obj_id].keys()) == 0: return []
-        dens_idx = list(density[obj_id].keys())[0]
+        idxs_left = set(density[obj_id].keys())
+        dens_idx = idxs_left.pop()
         start = density[obj_id][dens_idx]
         ordering = [(start, None)]
         queue = [dens_idx]
@@ -109,8 +110,16 @@ def get_traversal_orders(grid):
                     if neighbor_cell not in seen:
                         ordering.append((density[obj_id][neighbor_cell], density[obj_id][dens_idx]))
                         seen.add(neighbor_cell)
+                        idxs_left.remove(neighbor_cell)
                         new_queue.append(neighbor_cell)
             queue = new_queue
+
+            # make sure to include all points in traversal
+            if not queue and idxs_left:
+                neighbor_cell = idxs_left.pop()
+                ordering.append((density[obj_id][neighbor_cell], start))
+                seen.add(neighbor_cell)
+                queue.append(neighbor_cell)
         return ordering
 
     orderings = [(obj_id, bfs(obj_id)) for obj_id in obj_ids]

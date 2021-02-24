@@ -7,6 +7,7 @@ import numpy as np
 import open3d as o3d
 import datetime
 from LiDAR.segmentation_pipeline import pipeline
+from collections import defaultdict
 
 from queue import Queue
 from queue import Empty
@@ -15,9 +16,10 @@ from PIL import Image
 import cv2
 import time
 import pickle
-from skimage.measure import label, regionprops
+from skimage.measure import label as label_objects
 from scipy import stats
 import matplotlib.pyplot as plt
+from statistics import mode
 
 VIRIDIS = np.array(cm.get_cmap('viridis').colors)
 VID_RANGE = np.linspace(0.0,1.0, VIRIDIS.shape[0])
@@ -51,7 +53,9 @@ TAG = {"unlabeled": 0,
         "water": 21,
         "terrain": 22}
 
-# must be a common factor of camera width/height. For 600x800 can be: 2, 4, 5, 8, 10, ...
+TAG_ID = {TAG[key]: key for key in TAG}
+
+# must be a common factor of camera width/height. For 600x800 can be: 2, 4, 5, 8, 10, 20 ...
 DOWNSAMPLE_FACTOR = 10
 
 class Lidarcamera:
@@ -65,7 +69,6 @@ class Lidarcamera:
         self.obstacle = None
         self.client = None
         self.scanned_angle = 0
-        self.points = None
         self.point_idx = 0
         self.print_once = False
         self.blueprint_lidar = None
@@ -118,41 +121,6 @@ class Lidarcamera:
         im_array = np.reshape(im_array, (data.height, data.width, 4))
         im_array = im_array[:, :, :3][:, :, ::-1]
         self.image_queue.put(im_array)
-
-    def lidar_listener(self, data):
-        channel = 0
-        points_seen = 0
-        points = data.get_point_count(channel)
-        last_angle = None
-        #print([data.get_point_count(x) for x in range(32)])
-        new_data = []
-        for pt in data:
-            new_data.append([pt.point.x, pt.point.y, pt.point.z, pt.object_idx])
-            points_seen += 1
-            angle = math.degrees(math.atan(pt.point.y/(pt.point.x+1e-20)))
-            if last_angle is None:
-                diff = 0
-            else:
-                diff = angle-last_angle
-            if diff > 0.4:
-                phi = math.degrees(math.atan(math.sqrt(pt.point.x**2 + pt.point.y**2)/pt.point.z))
-                R = 10000
-                for shift in range(1, int(diff/0.4) + 1):
-                    new_angle = last_angle + (shift * 0.4)
-                    x = R * math.sin(math.radians(phi)) * math.cos(math.radians(new_angle))
-                    y = R * math.sin(math.radians(phi)) * math.sin(math.radians(new_angle))
-                    z = R * math.cos(math.radians(phi))
-                    new_data.append([x, y, z, 0])
-                #print("channel: ", channel, " angle: ", angle, " last_angle: ", last_angle)
-                #print("diff: ", diff)
-            last_angle = angle
-            if points == points_seen:
-                channel += 1
-                points = data.get_point_count(channel)
-                points_seen = 0
-                last_angle = None
-        #data = np.array([[pt.point.x, pt.point.y, pt.point.z, pt.object_idx] for pt in data])
-        self.lidar_queue.put(np.array(new_data))
     
     def camera_segmentation_listener(self, data):
         #data.convert(carla.ColorConverter.CityScapesPalette)
@@ -161,12 +129,45 @@ class Lidarcamera:
         im_array = im_array[:, :, :3][:, :, ::-1][:, :, 0]
         self.camera_segmentation_queue.put(im_array)
 
-    def get_rgb_point_velocities(self):
+    def lidar_listener(self, data):
+        channel = 0
+        points_seen = 0
+        points = data.get_point_count(channel)
+        last_angle = None
+        new_data = []
+        for pt in data:
+            new_data.append([pt.point.x, pt.point.y, pt.point.z, pt.object_idx, pt.object_tag])
+            points_seen += 1
+            angle = math.degrees(math.atan(pt.point.y/(pt.point.x+1e-20)))
+            if last_angle is None:
+                diff = 0
+            else:
+                diff = angle-last_angle
+            MIN_DIFF = 0.4
+            if diff > MIN_DIFF:
+                phi = math.degrees(math.atan(math.sqrt(pt.point.x**2 + pt.point.y**2)/pt.point.z))
+                R = 10000
+                for shift in range(1, int(diff/MIN_DIFF) + 1):
+                    new_angle = last_angle + (shift * MIN_DIFF)
+                    x = R * math.sin(math.radians(phi)) * math.cos(math.radians(new_angle))
+                    y = R * math.sin(math.radians(phi)) * math.sin(math.radians(new_angle))
+                    z = R * math.cos(math.radians(phi))
+                    new_data.append([x, y, z, 0, TAG["sky"]])
+            last_angle = angle
+            if points == points_seen:
+                channel += 1
+                points = data.get_point_count(channel)
+                points_seen = 0
+                last_angle = None
+        #data = np.array([[pt.point.x, pt.point.y, pt.point.z, pt.object_idx] for pt in data])
+        self.lidar_queue.put(np.array(new_data))
+    def get_rgb_point_velocities(self, points):
         # see carla/PythonAPI/examples/lidar_to_camera.py for detailed documentation
         
-        xyz_pts = np.copy(self.points)
-        xyz_pts[:,[0,1]] = xyz_pts[:,[1,0]]
-        velocities, colors = self.get_lidar_point_velocities(xyz_pts)
+        xyz_pts = np.copy(points)
+        #xyz_pts[:,[0,1]] = xyz_pts[:,[1,0]]
+        velocities = self.get_lidar_point_velocities(xyz_pts)
+        tags = xyz_pts[:,4]
         
         imageW = self.blueprint_camera.get_attribute("image_size_x").as_int()
         imageH = self.blueprint_camera.get_attribute("image_size_y").as_int()
@@ -177,8 +178,7 @@ class Lidarcamera:
         K[0,2] = imageW / 2.0
         K[1,2] = imageH / 2.0
 
-        intensity = np.array(self.points[:,3])
-        lidar_points = np.array(self.points[:,:3]).T
+        lidar_points = np.array(points[:,:3]).T
         lidar_points = np.r_[lidar_points, [np.ones(lidar_points.shape[1])]]
 
         lidar_to_world = self.lidar.get_transform().get_matrix()
@@ -195,54 +195,88 @@ class Lidarcamera:
             points_2D_unnormalized[1,:] / (points_2D_unnormalized[2,:]+0.0001),
             points_2D_unnormalized[2,:]])
         points_2D = points_2D.T
-        intensity = intensity.T
 
         points_in_range = (points_2D[:,0] > 0.0) & (points_2D[:,0] < imageW) & (points_2D[:,1] > 0.0) & (points_2D[:,1] < imageH) & (points_2D[:,2] > 0.0)
         original_pts = xyz_pts[points_in_range]
         points_2D = points_2D[points_in_range]
-        intensity = intensity[points_in_range]
-        colors = colors[points_in_range] * 255
         velocities = velocities[points_in_range]
+        tags = tags[points_in_range]
         
         points_2D[:,[0,1]] = points_2D[:,[1,0]]
-        return points_2D, velocities, original_pts
+        return points_2D, velocities, original_pts, tags
 
     def get_lidar_point_velocities(self, points):
         vehicle_actor_ids_to_velocity = {x.actor_id: self.world.get_actor(x.actor_id).get_velocity() for x in self.vehicles}
-        
-        colors = np.zeros((points.shape[0], 3))
         velocities = np.zeros((points.shape[0], 3))
         
         for i, point in enumerate(points):
             if point[3] in vehicle_actor_ids_to_velocity:
                 velocity = vehicle_actor_ids_to_velocity[point[3]]
                 velocities[i] = [velocity.x, velocity.y, velocity.z]
-                colors[i] = [1,0,0]
             else:
                 velocities[i] = [0,0,0]
-                colors[i] = [0,1,1]
-        return velocities, colors
+        return velocities
 
-    def get_objects_with_lidar_pts(self, labeled_image, downscaled_segmented_img, segmented_img, factor):
-        grid = [[[label, []] for label in row] for row in labeled_image]
-        """object_to_lidar_pts = {}
-        for obj in regionprops(labeled_image):
-            if obj.area >= 500 / (factor * factor):
-                object_to_lidar_pts[obj.label] = []"""
-        rgb_pts, velocities, lidar_pts = self.get_rgb_point_velocities()
+    def image_to_grid(self, lidar_cloud, segmented_image, factor):
+
+        def label_image(image):
+            # label roadline and road as same object
+            road_indices = (image == TAG["roadline"]) | (image == TAG["road"])
+            image[road_indices] = TAG["road"]
+            return label_objects(image, connectivity=1)
+
+        labeled_image = label_image(segmented_image)
+        rgb_pts, velocities, lidar_pts, tags = self.get_rgb_point_velocities(lidar_cloud)
+        # grid of cells with value [label, list_of_lidar_points]
+        grid = [[[None, []] for i in range(len(labeled_image[0])//factor)] for j in range(len(labeled_image)//factor)]
+
+        # list mapping object id's to the spegmented tag
+        object_id_to_tag = defaultdict(int)
+        # place lidar points on grid
         for i in range(len(rgb_pts)):
             x,y,_ = rgb_pts[i].astype(np.int)
-            true_segmented_label = segmented_img[x, y]
-            segmented_label = downscaled_segmented_img[x//factor, y//factor]
-            """
-            object_label = labeled_image[x//factor,y//factor]
-            if true_segmented_label == segmented_label and object_label in object_to_lidar_pts:
-                object_to_lidar_pts[object_label].append([lidar_pts[i], velocities[i], [x,y]])
-            """
-            #if len(grid[x//factor][y//factor][1]) == 0: # make sure seg_label == true_seg_label
-            grid[x//factor][y//factor][1].append([lidar_pts[i][:3], velocities[i], [x,y]])
+            object_id = labeled_image[x,y]
+            segmented_tag_truth = tags[i]
+            segmented_tag_projection = segmented_image[x,y]
+            # some lidar points are projected onto an incorrect object (due to rounding/resolution issues)
+            if segmented_tag_truth != segmented_tag_projection:
+                object_id = None
+                min_dist = float('inf')
+                # if we can find the object nearby, assign the lidar point to the closest object. if not, skip the lidar point
+                for s_x in range(max(0, x - 2*DOWNSAMPLE_FACTOR), min(x + 2*DOWNSAMPLE_FACTOR + 1, segmented_image.shape[0])):
+                    for s_y in range(max(0, y - 2*DOWNSAMPLE_FACTOR), min(y + 2*DOWNSAMPLE_FACTOR + 1, segmented_image.shape[1])):
+                        dist = (x-s_x)**2 + (y-s_y)**2
+                        if segmented_image[s_x, s_y] == segmented_tag_truth and dist < min_dist:
+                            min_dist = dist
+                            object_id = labeled_image[s_x, s_y]
+                if object_id is None:
+                    #print((x,y), "Lidar Truth: ", TAG_ID[segmented_tag_truth], "Predicted: ",TAG_ID[segmented_tag_projection])
+                    continue
+            object_id_to_tag[object_id] = segmented_tag_truth
+            grid[x//factor][y//factor][1].append([lidar_pts[i][:3], velocities[i], [x,y], object_id])
+
+        # assign labels to each cell in grid and removing lidar pts not corresponding to that label
+        for row in range(len(grid)):
+            for column in range(len(grid[row])):
+                cell = grid[row][column]
+                label_to_points = defaultdict(list)
+                for point in cell[1]:
+                    label = point.pop()
+                    label_to_points[label].append(point)
+                # no lidar points, so set label to the id of middle pixel inside cell
+                if len(label_to_points) == 0:
+                    cell[0] = labeled_image[row*factor + factor//2, column*factor + factor//2]
+                # object with most lidar points gets the cell labelled
+                else:
+                    label = max(label_to_points, key=lambda k: len(label_to_points[k]))
+                    cell[0] = label
+                    cell[1] = label_to_points[label]
+        
+        # new labeled image consists of the labels of the grid we made
+        labeled_image = np.array([[label for label,_ in row] for row in grid])
+
         #print([[int(len(x[1]) > 0) for x in row] for row in grid])
-        return grid
+        return grid, labeled_image, object_id_to_tag
         
     def extract_lane_points(self, points):
         valid_lane_points = ((points[:, 0] > -2) & (points[:,0] < 2) & (points[:,1] > 0) & (points[:,2] > -1.2))
@@ -251,34 +285,7 @@ class Lidarcamera:
         lane_points[:,1] -= ego_dist_to_front
         return lane_points
 
-    def downsample_image(self, image, width, height, factor):
-        image = image.reshape(height//factor,factor,width//factor,factor).swapaxes(1,2).reshape(height//factor,width//factor,-1)
-        im, count = stats.mode(image, axis=2)
-        return im[:,:,0]
-
-    def show_points(self, background_img, labeled_image, factor):
-        plt.imshow(background_img)
-        plt.show()
-        objs = self.get_objects_with_lidar_pts(labeled_image, factor)
-        for obj in objs:
-            if len(objs[obj]) == 0:
-                print("OBJ HAS NO LIDAR PTS")
-            else:
-                img = np.copy(background_img)
-                for pos_3d, vel, pos_2d in objs[obj]:
-                    x,y = pos_2d
-                    img[x,y] = 250
-                plt.imshow(img)
-                plt.show()
-
-    def label(self, segmentation_img):
-        segmentation_img = np.copy(segmentation_img)
-        #ground_indices = (segmentation_img == TAG["roadline"]) | (segmentation_img == TAG["sidewalk"]) | (segmentation_img == TAG["road"]) | (segmentation_img == TAG["ground"])
-        ground_indices = (segmentation_img == TAG["roadline"]) | (segmentation_img == TAG["road"])
-        segmentation_img[ground_indices] = TAG["road"]
-        return label(segmentation_img, connectivity=1)
-
-    def sensor_processor(self, frame_number):
+    def sensor_processor(self):
         try:
             rgb_image = self.image_queue.get(True, 1.0)
             lidar_cloud = self.lidar_queue.get(True, 1.0)
@@ -287,35 +294,22 @@ class Lidarcamera:
         except Empty:
             print("Warning: Sensor data missed")
             return
-        
-        self.points = lidar_cloud
 
-        down_sampled_segmentation_image = self.downsample_image(segmentation_image, 800, 600, DOWNSAMPLE_FACTOR)
-        labeled_image = self.label(down_sampled_segmentation_image)
+        grid, labeled_image, object_id_to_tag = self.image_to_grid(lidar_cloud, segmentation_image, DOWNSAMPLE_FACTOR)
 
-        obj_id_to_seg = {labeled_image[row, column]: down_sampled_segmentation_image[row, column] for row in range(len(labeled_image)) for column in range(len(labeled_image[row]))}
-        ground_ids = [id_ for id_ in obj_id_to_seg if obj_id_to_seg[id_] == TAG["road"]] # change to have multiple ground id's
-        #print(obj_id_to_seg)
-
-        grid = self.get_objects_with_lidar_pts(labeled_image, down_sampled_segmentation_image, segmentation_image, DOWNSAMPLE_FACTOR)
-        #self.show_points(segmentation_image, labeled_image, DOWNSAMPLE_FACTOR)
-        dic = {"grid": grid,
-                "labeled_image": labeled_image,
-                "factor": DOWNSAMPLE_FACTOR}
-        ego_vel = self.ego_vehicle.get_velocity() 
-        result = pipeline(grid, labeled_image, DOWNSAMPLE_FACTOR, [ego_vel.x, ego_vel.y, ego_vel.z], ground_ids)
-        #for test in result:
-        #    print(test, result[test])
+        ground_ids = [object_id for object_id in object_id_to_tag if object_id_to_tag[object_id] == TAG["road"]]
+        sky_ids = [object_id for object_id in object_id_to_tag if object_id_to_tag[object_id] == TAG["sky"]]
+        ego_vel = self.ego_vehicle.get_velocity()
+        result = pipeline(grid, labeled_image, DOWNSAMPLE_FACTOR, [ego_vel.x, ego_vel.y, ego_vel.z], ground_ids, sky_ids)
         self.count += 1
+
+        # saving frame to debug..
         if self.count % SAVE_RATE == 0 and RECORD:
-            #fil = open(f"lidar/car_{frame_number}", 'ab')
-            #pickle.dump(dic, fil)
-            #fil.close()
-            #Image.fromarray(labeled_image.astype(np.uint8)).save(f"lidar/labeled_image_{frame_number}.png")
             check_img = np.zeros(rgb_image.shape, dtype=np.uint8)
             id_to_color = {}
             delta = 1
             rgb_image_copy = np.copy(rgb_image)
+            segmented_image_copy = np.copy(segmentation_image)
             for j in range(len(grid)):
                 for i in range(len(grid[j])):
                     cell = grid[j][i]
@@ -325,15 +319,24 @@ class Lidarcamera:
                     x,y = lidar_pt[0][2]
                     if label not in id_to_color:
                         id_to_color[label] = list(np.random.random(size=3) * 256)
-                    #if label != grid[max(0,j-1)][i][0] or label != grid[j][max(0,i-1)][0]:
                     if True:
                         for dx in range(x-delta, x+delta+1):
                             for dy in range(y-delta, y+delta+1):
                                 rgb_image_copy[max(min(dx,rgb_image.shape[0]-1),0),max(min(dy,rgb_image.shape[1]-1),0)] = [255,255,255]
             text_X = 10
             text_Y = 30
+            colors = {
+                "Spatial Check": [255,0,0],
+                "Velocity Check": [0,0,255],
+                "Density Check": [128,0,128],
+                "Ground Check": [255,165,0],
+                "Collision Check": [0,0,0]
+            }
             for test in result:
-                color = (0,255,0) if result[test]["success"] else (255,0,0)
+                if result[test]["success"]:
+                    color = [0,255,0]
+                else:
+                    color = colors[test]
                 cv2.putText(rgb_image_copy, test, (text_X,text_Y), cv2.FONT_HERSHEY_SIMPLEX, 1, color, 2)
                 text_Y += 30
                 for pt in result[test]["bad_points"]:
@@ -342,32 +345,9 @@ class Lidarcamera:
                     #y //= DOWNSAMPLE_FACTOR
                     for dx in range(x-delta, x+delta+1):
                         for dy in range(y-delta, y+delta+1):
-                            rgb_image_copy[max(min(dx,rgb_image.shape[0]-1),0),max(min(dy,rgb_image.shape[1]-1),0)] = [255,0,0]
+                            rgb_image_copy[max(min(dx,rgb_image.shape[0]-1),0),max(min(dy,rgb_image.shape[1]-1),0)] = color
             pic =  np.hstack((rgb_image, rgb_image_copy))
-            Image.fromarray(pic).save(f"lidar/pic_{frame_number}.png")
-            """Image.fromarray(rgb_image).save(f"lidar/rgb_im_{frame_number}.png")
-            Image.fromarray(segmentation_image).save(f"lidar/segmentation_{frame_number}.png")
-            Image.fromarray(down_sampled_segmentation_image).save(f"lidar/downsampled_{frame_number}.png")
-            rgb_pts, velocities, lidar_pts = self.get_rgb_point_velocities()
-            for i in range(len(rgb_pts)):
-                x,y,_ = rgb_pts[i].astype(np.int)
-                segmentation_image[x,y] = 0
-            Image.fromarray(segmentation_image).save(f"lidar/rgb_im_lidar_{frame_number}.png")"""
-            pass
-        
-        # some weird transformations have to happen for the visualizer:
-        # flip the x and y coords 
-        """xyz_pts = np.copy(self.points)
-        xyz_pts[:,[0,1]] = xyz_pts[:,[1,0]]
-        xyz_pts = xyz_pts[:,:3]
-
-        lane_points = self.extract_lane_points(xyz_pts)
-        velocities, colors = self.get_lidar_point_velocities(lane_points)
-
-        ego_vel = self.ego_vehicle.get_velocity() 
-        ego_speed = (ego_vel.x ** 2 + ego_vel.y ** 2 + ego_vel.z ** 2) ** .5
-        self.certificate_result, self.closest_point = interlock(lane_points, velocities, ego_speed, TIMESTEP_DELTA)"""
-        self.points = None
+            Image.fromarray(pic).save(f"lidar/pic_{self.frame}.png")
 
     def spawn_obstacle(self, index=0, dist=15):
         if self.obstacle is not None:
@@ -389,18 +369,17 @@ class Lidarcamera:
 
     def main(self, case):
         try:
-            # initialize one painter
+            # initialize one painter for CarlaViz connection
             try:
                 self.painter = CarlaPainter('localhost', 8089)
             except Exception as e:
                 print("NO PAINTER")
                 self.painter = None
 
+            # connect to Carla engine
             self.client = carla.Client('localhost', 2000)
             self.client.set_timeout(10.0)
             self.world = self.client.get_world()
-
-            # set synchronous mode
             previous_settings = self.world.get_settings()
             self.world.apply_settings(carla.WorldSettings(
                 synchronous_mode=True,
@@ -408,9 +387,8 @@ class Lidarcamera:
             self.tm = self.client.get_trafficmanager()
             self.tm.set_synchronous_mode(True)
             self.tm_port = self.tm.get_port()
-            print('tm port is: ', self.tm_port)
             
-            # create the specific case
+            # create interlock starting scenario
             results = case(self.tm_port, self.client.apply_batch_sync, self.world)
             self.vehicles.append(results[1])
             if not results[0].error:
@@ -423,49 +401,42 @@ class Lidarcamera:
 
             # attach a camera and a lidar to the ego vehicle
             self.blueprint_camera = self.world.get_blueprint_library().find('sensor.camera.rgb')
-            #self.blueprint_camera.set_attribute('image_size_x', '640')
-            #self.blueprint_camera.set_attribute('image_size_y', '480')
+            self.blueprint_camera.set_attribute('image_size_x', '800')
+            self.blueprint_camera.set_attribute('image_size_y', '600')
             self.blueprint_camera.set_attribute('fov', '110')
             #self.blueprint_camera.set_attribute('sensor_tick', '0.1')
             transform_camera = carla.Transform(carla.Location(x=.0, z=1.8))
             self.camera = self.world.spawn_actor(self.blueprint_camera, transform_camera, attach_to=self.ego_vehicle)
             self.camera.listen(lambda data: self.camera_listener(data))
 
-            blueprint_lidar = self.world.get_blueprint_library().find('sensor.lidar.ray_cast_semantic')
-            # these specs follow the velodyne vlp32 spec
-            blueprint_lidar.set_attribute('range', '200')
-            #blueprint_lidar.set_attribute('range', '30')
-            blueprint_lidar.set_attribute('rotation_frequency', '20')
-            blueprint_lidar.set_attribute('channels', '32')
-            blueprint_lidar.set_attribute('lower_fov', '-25')
-            blueprint_lidar.set_attribute('upper_fov', '15')
-            blueprint_lidar.set_attribute('points_per_second', '578560')
-            #blueprint_lidar.set_attribute('atmosphere_attenuation_rate', '0.0')
-            self.blueprint_lidar = blueprint_lidar
+            self.blueprint_lidar = self.world.get_blueprint_library().find('sensor.lidar.ray_cast_semantic')
+            self.blueprint_lidar.set_attribute('range', '200000')
+            self.blueprint_lidar.set_attribute('rotation_frequency', '20')
+            self.blueprint_lidar.set_attribute('channels', '64')
+            self.blueprint_lidar.set_attribute('lower_fov', '-25')
+            self.blueprint_lidar.set_attribute('upper_fov', '15')
+            self.blueprint_lidar.set_attribute('points_per_second', '1200000')
             transform_lidar = carla.Transform(carla.Location(x=0.0, z=1.8))
-            self.lidar = self.world.spawn_actor(blueprint_lidar, transform_lidar, attach_to=self.ego_vehicle)
+            self.lidar = self.world.spawn_actor(self.blueprint_lidar, transform_lidar, attach_to=self.ego_vehicle)
             self.lidar.listen(lambda data: self.lidar_listener(data))
 
             # attach semantic segmentation camera to ego
             blueprint_camera_segmentation = self.world.get_blueprint_library().find('sensor.camera.semantic_segmentation')
-            blueprint_camera_segmentation.set_attribute('fov', '110')
-            transform_camera_segmentation = carla.Transform(carla.Location(x=.0, z=1.8))
-            self.camera_segmentation = self.world.spawn_actor(blueprint_camera_segmentation, transform_camera_segmentation, attach_to=self.ego_vehicle)
+            blueprint_camera_segmentation.set_attribute('image_size_x', str(self.blueprint_camera.get_attribute("image_size_x").as_int()))
+            blueprint_camera_segmentation.set_attribute('image_size_y', str(self.blueprint_camera.get_attribute("image_size_y").as_int()))
+            blueprint_camera_segmentation.set_attribute('fov', str(self.blueprint_camera.get_attribute("fov").as_float()))
+            self.camera_segmentation = self.world.spawn_actor(blueprint_camera_segmentation, transform_camera, attach_to=self.ego_vehicle)
             self.camera_segmentation.listen(lambda data: self.camera_segmentation_listener(data))
 
             # tick to generate these actors in the game world
             self.world.tick()
 
-            # save vehicles' trajectories to draw in the frontend
-            trajectories = [[]]
-            self.obstacle = None
-
             #self.obstacle = self.spawn_obstacle()
 
             while (True):
-                self.world.tick()
                 self.frame += 1
-                self.sensor_processor(self.frame)
+                self.world.tick()
+                self.sensor_processor()
                 strs = []
                 locs = []
 
@@ -578,6 +549,24 @@ def otherLane(tm_port, apply_batch, world):
     results = apply_batch(batch, True)
     world.get_actor(results[0].actor_id).set_target_velocity(carla.Vector3D(5,0,0))
 
+    return results
+
+def egoAndCarAtIntersection(tm_port, apply_batch, world):
+    ego_transform = carla.Transform(carla.Location(x=120.07566833496, y=8.87075996, z=0.27530714869499207))
+    vehicle_2_transform = carla.Transform(carla.Location(x=130.07566833496, y=8.87075996, z=0.27530714869499207))
+    vehicle_3_transform = carla.Transform(carla.Location(x=140.07566833496, y=8.87075996, z=0.27530714869499207))
+
+    blueprints_vehicles = world.get_blueprint_library().filter("vehicle.*")
+    blueprints_vehicles = [x for x in blueprints_vehicles if int(x.get_attribute('number_of_wheels')) == 4]
+    # set ego vehicle's role name to let CarlaViz know this vehicle is the ego vehicle
+    blueprints_vehicles[0].set_attribute('role_name', 'ego') # or set to 'hero'
+
+    actor1 = carla.command.SpawnActor(blueprints_vehicles[0], ego_transform)
+    actor2 = carla.command.SpawnActor(blueprints_vehicles[1], vehicle_2_transform)
+    actor3 = carla.command.SpawnActor(blueprints_vehicles[0], vehicle_3_transform).then(carla.command.SetAutopilot(carla.command.FutureActor, True, tm_port))
+    batch = [actor1, actor2, actor3]
+    
+    results = apply_batch(batch, True)
     return results
 
 if __name__ == "__main__":

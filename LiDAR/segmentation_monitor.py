@@ -5,8 +5,8 @@ from collections import defaultdict
 import math
 
 
-MAX_DECEL = 15
-MIN_DIST = 10
+MAX_DECEL = 4.5 # m/s^2
+MIN_DIST = 3 # m
 DEFAULT_TIMESTEP = .2
 
 
@@ -36,11 +36,11 @@ def get_points(obj_id, grid):
     return points
 
 
-def check_traversal_order(test, grid, traversal_orders):
+def check_traversal_order(test, grid, traversal_orders, sky_ids, image_pos):
     from LiDAR.v2_traversal import cell_size
     pos_threshold = cell_size * 2 * (3 ** .5)
     for (obj_id, traversal_order) in traversal_orders:
-        if traversal_order is None or len(traversal_order) == 0:
+        if obj_id in sky_ids or traversal_order is None or len(traversal_order) == 0:
             continue
         seen = {traversal_order[0][0]}
         for (point_a, point_b) in traversal_order[1:]:
@@ -55,7 +55,9 @@ def check_traversal_order(test, grid, traversal_orders):
                 d = dist(grid[j_a][i_a][1][k_a][0], grid[j_b][i_b][1][k_b][0])
                 if d > pos_threshold:
                     test["success"] = False
+                    test["bad_points"].extend(image_pos[obj_id])
                     test["error_msg"] = f"Points {point_a} and {point_b} are {d} apart, which is too far away"
+                    break
                     # TODO: should add point_a and point_b to bad_points, but we need to add 2d x,y coords to do that
 
 
@@ -90,21 +92,19 @@ def check_density_spread_all_objs(test, image_pos, image, image_scale_factor):
         for point in image_pos[obj]:
             density[point[0]//image_scale_factor][point[1]//image_scale_factor].add(obj)
     
-    bad_objs = set()
     for i in range(len(LIDAR_GRID)):
         for j in range(len(LIDAR_GRID[i])):
             if LIDAR_GRID[i][j] == 1 and image[i][j] not in density[i][j]:
                 test["success"] = False
                 # TODO: error msg
-                # TODO: should also add points to bad_points
-                bad_objs.add(image[i][j])
+                test["bad_points"].append([i*image_scale_factor + image_scale_factor//2, j*image_scale_factor + image_scale_factor//2])
     # if bad_objs:
     #     return False, list(bad_objs)
     # # print(density)
     return True, []
 
 
-def check_ground_pts_on_ground(test, grid, ground_ids, height_threshold=-0.5):
+def check_ground_pts_on_ground(test, grid, ground_ids, height_threshold=-1.0):
     bad_points = []
     for ground_id in ground_ids:
         ground_points = get_points(ground_id, grid)
@@ -118,7 +118,7 @@ def check_ground_pts_on_ground(test, grid, ground_ids, height_threshold=-0.5):
 
 def is_safe(ego_vel, other_pos, other_vel, timestep=DEFAULT_TIMESTEP, min_dist=MIN_DIST, max_decel=MAX_DECEL):
     cur_speed = dist(ego_vel)
-    stopping_time = cur_speed/max_decel
+    stopping_time = cur_speed/abs(max_decel)
 
     def decel(vel, rate):
         x, y, z = vel
@@ -134,7 +134,7 @@ def is_safe(ego_vel, other_pos, other_vel, timestep=DEFAULT_TIMESTEP, min_dist=M
         a_x_o, a_y_o, a_z_o = other_accel # other acceleration
         
         # polynomial equation of the form at^2 + bt + c = 0, minimized when t = -b/2a
-        t_closest_x = abs((v_x_e - v_x_o)/(a_x_e - a_x_o))
+        t_closest_x = abs((v_x_e - v_x_o)/((a_x_e - a_x_o)+1e-6))
         if t_closest_x > stopping_time: # enough time to stop
             return True
         else:
@@ -142,7 +142,7 @@ def is_safe(ego_vel, other_pos, other_vel, timestep=DEFAULT_TIMESTEP, min_dist=M
             if closest_x_dist > min_dist: # closest x distance is large enough
                 return True
 
-        t_closest_y = abs((v_y_e - v_y_o)/(a_y_e - a_y_o))
+        t_closest_y = abs((v_y_e - v_y_o)/((a_y_e - a_y_o)+1e-6))
         if t_closest_y > stopping_time: # enough time to stop
             return True
         else:
@@ -150,14 +150,14 @@ def is_safe(ego_vel, other_pos, other_vel, timestep=DEFAULT_TIMESTEP, min_dist=M
             if closest_y_dist > min_dist: # closest y distance is large enough
                 return True
 
-        t_closest_z = abs((v_z_e - v_z_o)/(a_z_e - a_z_o))
+        t_closest_z = abs((v_z_e - v_z_o)/((a_z_e - a_z_o)+1e-6))
         if t_closest_z > stopping_time: # enough time to stop
             return True
         else:
             closest_z_dist = 0.5*(a_z_e - a_z_o)*t_closest_z**2 + t_closest_z*(v_z_e - v_z_o) + z_e - z_o
             if closest_z_dist > min_dist: # closest y distance is large enough
                 return True
-    
+
         return False
 
     return helper(3*(max_decel,), 3*(0,)) and helper(3*(max_decel,), 3*(max_decel,))
@@ -166,8 +166,8 @@ def check_predicates(test, grid, vels, ego_vel, ground_ids, image_pos):
     """
     For now assuming a straight path but eventually we can incorporate curved or more complex paths
     """
-    point_in_path = lambda x: (-2 < x[0][0] < 2) and x[0][1] > 0 and x[0][2] > -1.2
-    obj_in_path = lambda x: any(point_in_path(p) for p in get_points(x, grid))
+    point_in_path = lambda x: (-2 < x[1] < 2) and x[0] > 0 and x[2] > -1.2
+    obj_in_path = lambda x: any(point_in_path(p[0]) for p in get_points(x, grid))
     obj_ids = {cell[0] for row in grid for cell in row}
     object_ids_in_path = list(filter(obj_in_path, obj_ids))
     for obj_id in object_ids_in_path:
@@ -181,7 +181,7 @@ def check_predicates(test, grid, vels, ego_vel, ground_ids, image_pos):
             test["bad_points"].extend(image_pos[obj_id])
 
 
-def interlock(grid, ground_ids, traversal_orders, image, vel_threshold, image_scale_factor, ego_vel):
+def interlock(grid, ground_ids, sky_ids, traversal_orders, image, vel_threshold, image_scale_factor, ego_vel):
     """
     grid: 2d array of cells where each value is a tuple of the form (obj_id, lidar_points)
         where obj_id is the unique id corresponding to the object in that cell
@@ -249,7 +249,7 @@ def interlock(grid, ground_ids, traversal_orders, image, vel_threshold, image_sc
 
     test_suite = {
         "Spatial Check": {
-            "function": lambda test: check_traversal_order(test, grid, traversal_orders),
+            "function": lambda test: check_traversal_order(test, grid, traversal_orders, sky_ids, image_pos),
             "success": True,
             "error_msg": "",
             "bad_points": []
@@ -282,47 +282,6 @@ def interlock(grid, ground_ids, traversal_orders, image, vel_threshold, image_sc
     for check in test_suite:
         test = test_suite[check]
         test["function"](test)
+    test_suite.pop("Collision Check")
+    #test_suite.pop("Spatial Check")
     return test_suite
-
-    """result = check_traversal_order(grid, traversal_orders)
-    success = True
-    bad_points = []
-    if not result[0]:
-        print("Traversal order check failed")
-        success = False
-        bad_points.extend(result[1])
-
-    result = check_same_velocity(vels, vel_threshold)
-    if not result[0]:
-        print("Same velocity check failed")
-        success = False
-        bad_points.extend(result[1])
-
-    result = check_density_spread_all_objs(image_pos, image, image_scale_factor)
-    if not result[0]:
-        print("Density/spread check failed", result[1])
-        success = False
-        bad_points.extend(result[1])
-
-    if not check_ground_pts_on_ground(grid, ground_id):
-        print("Ground check failed")
-        success = False
-        bad_points.extend(result[1])
-
-    if not check_predicates(grid, vels, ego_vel):
-        print("Predicates check failed")
-        success = False
-    
-    print("Success: ", success)
-    return success, bad_points"""
-
-
-# if __name__ == "__main__":
-#     filename = 'LiDAR/lidar002310.ply'
-#     visualize(filename)
-
-#     new_filename = 'LiDAR/filtered-lidar.ply'
-#     points = create_filtered_point_cloud(filename, new_filename)
-#     visualize(new_filename)
-
-#     print(interlock(points, 0, -15))
