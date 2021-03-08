@@ -330,7 +330,7 @@ class Lidarcamera:
                 "Velocity Check": [0,0,255],
                 "Density Check": [128,0,128],
                 "Ground Check": [255,165,0],
-                "Collision Check": [0,0,0]
+                "Collision Check": [0,0,255]
             }
             for test in result:
                 if result[test]["success"]:
