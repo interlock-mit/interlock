@@ -14,7 +14,7 @@ from queue import Empty
 from matplotlib import cm
 from PIL import Image
 import cv2
-import time
+import datetime
 import pickle
 from skimage.measure import label as label_objects
 from scipy import stats
@@ -248,8 +248,8 @@ class Lidarcamera:
                 object_id = None
                 min_dist = float('inf')
                 # if we can find the object nearby, assign the lidar point to the closest object. if not, skip the lidar point
-                for s_x in range(max(0, x - DOWNSAMPLE_FACTOR), min(x + DOWNSAMPLE_FACTOR + 1, segmented_image.shape[0])):
-                    for s_y in range(max(0, y - DOWNSAMPLE_FACTOR), min(y + DOWNSAMPLE_FACTOR + 1, segmented_image.shape[1])):
+                for s_x in range(max(0, x - 2*DOWNSAMPLE_FACTOR), min(x + 2*DOWNSAMPLE_FACTOR + 1, segmented_image.shape[0])):
+                    for s_y in range(max(0, y - 2*DOWNSAMPLE_FACTOR), min(y + 2*DOWNSAMPLE_FACTOR + 1, segmented_image.shape[1])):
                         dist = (x-s_x)**2 + (y-s_y)**2
                         if segmented_image[s_x, s_y] == segmented_tag_truth and dist < min_dist:
                             min_dist = dist
@@ -301,7 +301,9 @@ class Lidarcamera:
             print("Warning: Sensor data missed")
             return
 
+        a = datetime.datetime.now()
         grid, labeled_image, object_id_to_tag = self.image_to_grid(lidar_cloud, segmentation_image, DOWNSAMPLE_FACTOR)
+        print("created grid: ", (datetime.datetime.now()-a).total_seconds())
 
         ground_ids = [object_id for object_id in object_id_to_tag if object_id_to_tag[object_id] == TAG["road"]]
         sky_ids = [object_id for object_id in object_id_to_tag if object_id_to_tag[object_id] == TAG["sky"]]
@@ -323,7 +325,7 @@ class Lidarcamera:
                 "Velocity Check": [0,0,255],
                 "Density Check": [128,0,128],
                 "Ground Check": [255,165,0],
-                "Collision Check": [0,0,255]
+                "Collision Check": [0,0,0]
             }
             bad_squares = set()
             for test in result:
@@ -497,8 +499,8 @@ class Lidarcamera:
             self.client.apply_batch([carla.command.DestroyActor(x.actor_id) for x in self.vehicles])
 
 def egoAndCarDrivingAutoPilot(tm_port, apply_batch, world):
-    ego_transform = carla.Transform(carla.Location(x=120.07566833496, y=8.87075996, z=0.27530714869499207))
-    vehicle_2_transform = carla.Transform(carla.Location(x=130.07566833496, y=8.87075996, z=0.27530714869499207))
+    ego_transform = carla.Transform(carla.Location(x=120.07566833496, y=8.87075996, z=0.17530714869499207))
+    vehicle_2_transform = carla.Transform(carla.Location(x=130.07566833496, y=8.87075996, z=0.17530714869499207))
 
     blueprints_vehicles = world.get_blueprint_library().filter("vehicle.*")
     blueprints_vehicles = [x for x in blueprints_vehicles if int(x.get_attribute('number_of_wheels')) == 4]
@@ -513,8 +515,8 @@ def egoAndCarDrivingAutoPilot(tm_port, apply_batch, world):
     return results
 
 def egoCrashingIntoStationaryCar(tm_port, apply_batch, world):
-    ego_transform = carla.Transform(carla.Location(x=110.07566833496, y=8.87075996, z=0.27530714869499207))
-    vehicle_2_transform = carla.Transform(carla.Location(x=160.07566833496, y=8.87075996, z=0.27530714869499207))
+    ego_transform = carla.Transform(carla.Location(x=110.07566833496, y=8.87075996, z=0.17530714869499207))
+    vehicle_2_transform = carla.Transform(carla.Location(x=160.07566833496, y=8.87075996, z=0.17530714869499207))
 
     blueprints_vehicles = world.get_blueprint_library().filter("vehicle.*")
     blueprints_vehicles = [x for x in blueprints_vehicles if int(x.get_attribute('number_of_wheels')) == 4]
@@ -570,7 +572,7 @@ def otherLane(tm_port, apply_batch, world):
 def egoAndCarAtIntersection(tm_port, apply_batch, world):
     ego_transform = carla.Transform(carla.Location(x=210.07566833496, y=9.7075996, z=0.17530714869499207))
     vehicle_2_transform = carla.Transform(carla.Location(x=217.07566833496, y=9.7075996, z=0.17530714869499207))
-    vehicle_3_transform = carla.Transform(carla.Location(x=230.07566833496, y=9.7075996, z=0.17530714869499207))
+    crossing_vehicle = carla.Transform(carla.Location(x=231.57566833496, y=0.7075996, z=0.17530714869499207), carla.Rotation(pitch=0, yaw=90, roll=0))
 
     blueprints_vehicles = world.get_blueprint_library().filter("vehicle.*")
     blueprints_vehicles = [x for x in blueprints_vehicles if int(x.get_attribute('number_of_wheels')) == 4]
@@ -579,7 +581,7 @@ def egoAndCarAtIntersection(tm_port, apply_batch, world):
 
     actor1 = carla.command.SpawnActor(blueprints_vehicles[0], ego_transform)
     actor2 = carla.command.SpawnActor(blueprints_vehicles[1], vehicle_2_transform)
-    actor3 = carla.command.SpawnActor(blueprints_vehicles[0], vehicle_3_transform).then(carla.command.SetAutopilot(carla.command.FutureActor, True, tm_port))
+    actor3 = carla.command.SpawnActor(blueprints_vehicles[2], crossing_vehicle).then(carla.command.SetAutopilot(carla.command.FutureActor, True, tm_port))
     batch = [actor1, actor2, actor3]
     
     results = apply_batch(batch, True)
