@@ -9,6 +9,8 @@ MAX_DECEL = 4.5 # m/s^2
 MIN_DIST = 3 # m
 DEFAULT_TIMESTEP = .2
 
+THRESHOLD = 1.5
+SCOPE = 25
 
 def add(vec1, vec2):
     return (vec1[0] + vec2[0], vec1[1] + vec2[1], vec1[2] + vec2[2])
@@ -37,12 +39,18 @@ def get_points(obj_id, grid):
 
 
 def check_traversal_order(test, grid, traversal_orders, sky_ids, image_pos):
-    from LiDAR.v2_traversal import cell_size
-    pos_threshold = cell_size * 2 * (3 ** .5)
+    test["good_points"] = []
+    road, _ = grid[30][60]
+    sidewalk, _ = grid[30][90]
+    wall, _ = grid[30][119]
+    observe = {road: "road", sidewalk: "sidewalk", wall: "wall"}
     for (obj_id, traversal_order) in traversal_orders:
+        #if obj_id not in observe:
+        #    continue
         if obj_id in sky_ids or traversal_order is None or len(traversal_order) == 0:
             continue
         seen = {traversal_order[0][0]}
+        connected_components = {1: {traversal_order[0][0]}}
         for (point_a, point_b) in traversal_order[1:]:
             if point_b not in seen:
                 test["success"] = False
@@ -52,13 +60,45 @@ def check_traversal_order(test, grid, traversal_orders, sky_ids, image_pos):
                 seen.add(point_a)
                 i_a, j_a, k_a = point_a
                 i_b, j_b, k_b = point_b
-                d = dist(grid[j_a][i_a][1][k_a][0], grid[j_b][i_b][1][k_b][0])
-                if d > pos_threshold:
+                d = dist(grid[i_a][j_a][1][k_a][0], grid[i_b][j_b][1][k_b][0])
+                if d > THRESHOLD and dist(grid[i_a][j_a][1][k_a][0]) <= SCOPE and dist( grid[i_b][j_b][1][k_b][0]) <= SCOPE :
                     test["success"] = False
-                    test["bad_points"].extend(image_pos[obj_id])
+                    #test["bad_points"].extend(image_pos[obj_id])
                     test["error_msg"] = f"Points {point_a} and {point_b} are {d} apart, which is too far away"
-                    break
-                    # TODO: should add point_a and point_b to bad_points, but we need to add 2d x,y coords to do that
+                    connected_components[len(connected_components)+1] = {point_a}
+                    #break
+                else:
+                    for comp in connected_components:
+                        if point_b in connected_components[comp]:
+                            connected_components[comp].add(point_a)
+        conn2 = {}
+        for con_comp in connected_components:
+            new_comp = set()
+            for i,j,k in connected_components[con_comp]:
+                if dist(grid[i][j][1][k][0]) <= SCOPE:
+                    new_comp.add((i,j,k))
+            if len(new_comp) > 0:
+                conn2[con_comp] = new_comp
+        #print(len(conn2), len(connected_components), min(dist(grid[i][j][1][k][0]) for indx in connected_components for i,j,k in connected_components[indx]))
+        connected_components = conn2
+        min_dist = float('inf')
+        if len(connected_components) > 1:
+            lengths = [(len(connected_components[x]), x) for x in connected_components]
+            max_num, max_indx = max(lengths, key= lambda x: x[0])
+            for i in connected_components:
+                if i != max_indx:
+                    for i,j,k in connected_components[i]:
+                        pt = grid[i][j][1][k][0]
+                        if dist(pt) < min_dist:
+                            min_dist = dist(pt)
+                        test["bad_points"].append(grid[i][j][1][k][2])
+                else:
+                    for i,j,k in connected_components[i]:
+                        test["good_points"].append(grid[i][j][1][k][2])
+        if obj_id in observe:
+            print("MIN_DIST: ", observe[obj_id], " ", min_dist)
+            
+                # TODO: should add point_a and point_b to bad_points, but we need to add 2d x,y coords to do that
 
 
 def avg_velocity(obj):
@@ -283,5 +323,8 @@ def interlock(grid, ground_ids, sky_ids, traversal_orders, image, vel_threshold,
         test = test_suite[check]
         test["function"](test)
     test_suite.pop("Collision Check")
+    test_suite.pop("Velocity Check")
+    test_suite.pop("Density Check")
+    test_suite.pop("Ground Check")
     #test_suite.pop("Spatial Check")
     return test_suite
