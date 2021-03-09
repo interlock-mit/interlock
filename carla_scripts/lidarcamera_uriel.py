@@ -332,11 +332,13 @@ class Lidarcamera:
                 "Ground Check": [255,165,0],
                 "Collision Check": [0,0,255]
             }
+            self.certificate_result = True
             for test in result:
                 if result[test]["success"]:
                     color = [0,255,0]
                 else:
                     color = colors[test]
+                    if test == "Collision Check": self.certificate_result = False
                 cv2.putText(rgb_image_copy, test, (text_X,text_Y), cv2.FONT_HERSHEY_SIMPLEX, 1, color, 2)
                 text_Y += 30
                 for pt in result[test]["bad_points"]:
@@ -458,7 +460,6 @@ class Lidarcamera:
 
                     # print([v.get_velocity().x for v in vehicle_actors])
                     self.world.get_actor(self.ego_id).apply_control(carla.VehicleControl(brake=1.0))
-
                 locs.append([loc.x-5, loc.y-5, loc.z + 20.0])
                 self.painter.draw_texts(strs, locs, size=20)
 
@@ -511,6 +512,7 @@ def egoCrashingIntoStationaryCar(tm_port, apply_batch, world):
     
     results = apply_batch(batch, True)
     world.get_actor(results[0].actor_id).set_target_velocity(carla.Vector3D(5,0,0))
+    world.get_actor(results[1].actor_id).set_target_velocity(carla.Vector3D(0,0,0))
     return results
 
 
@@ -571,4 +573,4 @@ def egoAndCarAtIntersection(tm_port, apply_batch, world):
 
 if __name__ == "__main__":
     lidarcamera = Lidarcamera()
-    lidarcamera.main(egoAndCarDrivingAutoPilot)
+    lidarcamera.main(egoCrashingIntoStationaryCar)

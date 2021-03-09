@@ -6,7 +6,9 @@ import math
 
 
 MAX_DECEL = -4.5 # m/s^2
-MIN_DIST = 3 # m
+MIN_DIST = 5 # m
+
+imag_threshold = 1e-5 # cutoff for imaginary/real roots
 
 
 def add(vec1, vec2):
@@ -124,43 +126,90 @@ def is_safe(ego_vel, other_pos, other_vel, min_dist=MIN_DIST, max_decel=MAX_DECE
         x_o, y_o, z_o = other_pos # other position
         v_x_e, v_y_e, v_z_e = ego_vel # ego velocity
         v_x_o, v_y_o, v_z_o = other_vel # other velocity
-        a_x_e, a_y_e, a_z_e = ego_accel # ego acceleration
-        a_x_o, a_y_o, a_z_o = other_accel # other acceleration
+        a_e = ego_accel # ego acceleration
+        a_o = other_accel # other acceleration
         
-        # polynomial equation of the form at^2 + bt + c = 0, minimized when t = -b/2a
-        t_closest_x = abs((v_x_e - v_x_o)/((a_x_e - a_x_o)+1e-6))
-        if t_closest_x > stopping_time: # enough time to stop
-            return True
-        else:
-            closest_x_dist = abs(0.5*(a_x_e - a_x_o)*t_closest_x**2 + t_closest_x*(v_x_e - v_x_o) + x_e - x_o)
-            if closest_x_dist > min_dist: # closest x distance is large enough
-                return True
+        d_x, d_y, d_z = x_e - x_o, y_e - y_o, z_e - z_o
+        d_v_x, d_v_y, d_v_z = v_x_e - v_x_o, v_y_e - v_y_o, v_z_e - v_z_o
+        d_a = a_e - a_o
 
-        t_closest_y = abs((v_y_e - v_y_o)/((a_y_e - a_y_o)+1e-6))
-        if t_closest_y > stopping_time: # enough time to stop
-            return True
-        else:
-            closest_y_dist = abs(0.5*(a_y_e - a_y_o)*t_closest_y**2 + t_closest_y*(v_y_e - v_y_o) + y_e - y_o)
-            if closest_y_dist > min_dist: # closest y distance is large enough
-                return True
+        def is_real(t):
+            return abs(np.imag(t)) < imag_threshold
 
-        t_closest_z = abs((v_z_e - v_z_o)/((a_z_e - a_z_o)+1e-6))
-        if t_closest_z > stopping_time: # enough time to stop
-            return True
-        else:
-            closest_z_dist = abs(0.5*(a_z_e - a_z_o)*t_closest_z**2 + t_closest_z*(v_z_e - v_z_o) + z_e - z_o)
-            if closest_z_dist > min_dist: # closest y distance is large enough
-                return True
+        def solve_quadratic(a, b, c):
+            """ Returns a list of all real t values that solve at^2 + bt + c = 0 """
+            return [t for t in np.roots([a, b, c]) if is_real(t) and t >= 0]
 
-        return False
+        def solve_cubic(a, b, c, d):
+            """ Returns a list of all real t values that solve at^3 + bt^2 + ct + d = 0 """
+            return [t for t in np.roots([a, b, c, d]) if is_real(t) and t >= 0]
 
-    return helper(3*(max_decel,), 3*(0,)) and helper(3*(max_decel,), 3*(max_decel,))
+        def solve_quartic(a, b, c, d, e):
+            """ Returns a list of all real t values that solve at^4 + bt^3 + ct^2 + dt + e = 0 """
+            return [t for t in np.roots([a, b, c, d, e]) if is_real(t) and t >= 0]
+
+        def eval(t, a, b, c, d, e):
+            return (a*t**4 + b*t**3 + c*t**2 + d*t + e)**0.5
+
+        # distance between ego and other as a function of time: d(t) = sqrt(at^4 + bt^3 + ct^2 + dt + e)
+        a = (3/4)*(d_a**2)
+        b = (d_a/2)*(d_v_x + d_v_y + d_v_z)
+        c = (d_a/2)*(d_x + d_y + d_z) + d_v_x**2 + d_v_y**2 + d_v_z**2
+        d = 2*(d_x*d_v_x + d_y*d_v_y + d_z*d_v_z)
+        e = d_x**2 + d_y**2 + d_z**2 
+
+        # unsafe if d(0) <= min_dist
+        if eval(0, a, b, c, d, e) <= min_dist:
+            return False
+        
+        # unsafe if d(stopping_time) <= min_dist
+        if eval(stopping_time, a, b, c, d, e) <= min_dist:
+            return False
+
+        def return_ts(a, b, c, d, e):
+            if a == 0:
+                if b == 0:
+                    if c == 0:
+                        if d == 0:
+                            return []
+                        else:
+                            return [(min_dist**2 - e)/d]
+                    else:
+                        return solve_quadratic(c, d, e)
+                else:
+                    return solve_cubic(b, c, d, e)
+            else:
+                return solve_quartic(a, b, c, d, e)
+
+        # unsafe if d(t) <= min_dist for some t <= stopping_time
+        # d(t) minimized when 4at^3 + 3bt^2 + 2ct + d = 0
+        for t in return_ts(0, 4*a, 3*b, 2*c, d):
+            if 0 <= t <= stopping_time:
+                if eval(t, a, b, c, d, e) <= min_dist:
+                    return False
+
+        # unsafe if d(t) = min_dist for some t <= stopping_time
+        for t in return_ts(a, b, c, d, e - min_dist**2):
+            if 0 <= t <= stopping_time:
+                return False
+
+        # unsafe if d(t) = 0 for some t <= stopping_time
+        for t in return_ts(a, b, c, d, e):
+            if 0 <= t <= stopping_time:
+                return False
+
+        return True
+
+    if all([other_vel[i] == 0] for i in range(3)): # stationary object
+        return helper(max_decel, 0)
+    else: # moving object
+        return helper(max_decel, 0) and helper(max_decel, max_decel)
 
 def check_predicates(test, grid, vels, ego_vel, ground_ids, image_pos):
     """
     For now assuming a straight path but eventually we can incorporate curved or more complex paths
     """
-    point_in_path = lambda x: (-2 < x[1] < 2) and x[0] > 0 and x[2] > -1.2
+    point_in_path = lambda x: (-5 < x[1] < 5) and x[0] > 0 and x[2] > -1.2
     obj_in_path = lambda x: any(point_in_path(p[0]) for p in get_points(x, grid))
     obj_ids = {cell[0] for row in grid for cell in row}
     object_ids_in_path = list(filter(obj_in_path, obj_ids))
@@ -277,4 +326,5 @@ def interlock(grid, ground_ids, sky_ids, traversal_orders, image, vel_threshold,
         test = test_suite[check]
         test["function"](test)
     test_suite.pop("Spatial Check")
+    test_suite.pop("Ground Check")
     return test_suite
