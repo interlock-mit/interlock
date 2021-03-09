@@ -5,11 +5,10 @@ from collections import defaultdict
 import math
 
 
-MAX_DECEL = 4.5 # m/s^2
+MAX_DECEL = -4.5 # m/s^2
 MIN_DIST = 3 # m
-DEFAULT_TIMESTEP = .2
 
-THRESHOLD = 1.5
+THRESHOLD = 1.8
 SCOPE = 25
 
 def add(vec1, vec2):
@@ -39,7 +38,6 @@ def get_points(obj_id, grid):
 
 
 def check_traversal_order(test, grid, traversal_orders, sky_ids, image_pos):
-    test["good_points"] = []
     road, _ = grid[30][60]
     sidewalk, _ = grid[30][90]
     wall, _ = grid[30][119]
@@ -156,14 +154,9 @@ def check_ground_pts_on_ground(test, grid, ground_ids, height_threshold=-1.0):
                 test["bad_points"].append(pt[2])
 
 
-def is_safe(ego_vel, other_pos, other_vel, timestep=DEFAULT_TIMESTEP, min_dist=MIN_DIST, max_decel=MAX_DECEL):
+def is_safe(ego_vel, other_pos, other_vel, min_dist=MIN_DIST, max_decel=MAX_DECEL):
     cur_speed = dist(ego_vel)
     stopping_time = cur_speed/abs(max_decel)
-
-    def decel(vel, rate):
-        x, y, z = vel
-        helper = lambda x: max(x - rate, 0) if x > 0 else min(x + rate, 0)
-        return (helper(x), helper(y), helper(z))
 
     def helper(ego_accel, other_accel):
         x_e, y_e, z_e = (0, 0, 0) # ego position
@@ -178,7 +171,7 @@ def is_safe(ego_vel, other_pos, other_vel, timestep=DEFAULT_TIMESTEP, min_dist=M
         if t_closest_x > stopping_time: # enough time to stop
             return True
         else:
-            closest_x_dist = 0.5*(a_x_e - a_x_o)*t_closest_x**2 + t_closest_x*(v_x_e - v_x_o) + x_e - x_o
+            closest_x_dist = abs(0.5*(a_x_e - a_x_o)*t_closest_x**2 + t_closest_x*(v_x_e - v_x_o) + x_e - x_o)
             if closest_x_dist > min_dist: # closest x distance is large enough
                 return True
 
@@ -186,7 +179,7 @@ def is_safe(ego_vel, other_pos, other_vel, timestep=DEFAULT_TIMESTEP, min_dist=M
         if t_closest_y > stopping_time: # enough time to stop
             return True
         else:
-            closest_y_dist = 0.5*(a_y_e - a_y_o)*t_closest_y**2 + t_closest_y*(v_y_e - v_y_o) + y_e - y_o
+            closest_y_dist = abs(0.5*(a_y_e - a_y_o)*t_closest_y**2 + t_closest_y*(v_y_e - v_y_o) + y_e - y_o)
             if closest_y_dist > min_dist: # closest y distance is large enough
                 return True
 
@@ -194,7 +187,7 @@ def is_safe(ego_vel, other_pos, other_vel, timestep=DEFAULT_TIMESTEP, min_dist=M
         if t_closest_z > stopping_time: # enough time to stop
             return True
         else:
-            closest_z_dist = 0.5*(a_z_e - a_z_o)*t_closest_z**2 + t_closest_z*(v_z_e - v_z_o) + z_e - z_o
+            closest_z_dist = abs(0.5*(a_z_e - a_z_o)*t_closest_z**2 + t_closest_z*(v_z_e - v_z_o) + z_e - z_o)
             if closest_z_dist > min_dist: # closest y distance is large enough
                 return True
 
@@ -321,10 +314,11 @@ def interlock(grid, ground_ids, sky_ids, traversal_orders, image, vel_threshold,
     }
     for check in test_suite:
         test = test_suite[check]
+        test["good_points"] = []
         test["function"](test)
-    test_suite.pop("Collision Check")
-    test_suite.pop("Velocity Check")
-    test_suite.pop("Density Check")
-    test_suite.pop("Ground Check")
+    #test_suite.pop("Collision Check")
+    #test_suite.pop("Velocity Check")
+    #test_suite.pop("Density Check")
+    #test_suite.pop("Ground Check")
     #test_suite.pop("Spatial Check")
     return test_suite
