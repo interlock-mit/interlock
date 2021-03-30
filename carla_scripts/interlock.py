@@ -303,7 +303,7 @@ class Lidarcamera:
 
         a = datetime.datetime.now()
         grid, labeled_image, object_id_to_tag = self.image_to_grid(lidar_cloud, segmentation_image, DOWNSAMPLE_FACTOR)
-        print("created grid: ", (datetime.datetime.now()-a).total_seconds())
+        #print("created grid: ", (datetime.datetime.now()-a).total_seconds())
 
         ground_ids = [object_id for object_id in object_id_to_tag if object_id_to_tag[object_id] == TAG["road"]]
         sky_ids = [object_id for object_id in object_id_to_tag if object_id_to_tag[object_id] == TAG["sky"]]
@@ -334,7 +334,8 @@ class Lidarcamera:
                     color = [0,255,0]
                 else:
                     color = colors[test]
-                    if test == "Collision Check": self.certificate_result = False
+                    if test == "Collision Check":
+                        self.certificate_result = False
                 cv2.putText(rgb_image_copy, test, (text_X,text_Y), cv2.FONT_HERSHEY_SIMPLEX, 1, color, 2)
                 text_Y += 30
                 for pt in result[test]["bad_points"]:
