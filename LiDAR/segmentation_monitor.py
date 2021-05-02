@@ -10,6 +10,7 @@ MIN_DIST = 5 # m
 
 imag_threshold = 1e-5 # cutoff for imaginary/real roots
 
+VELOCITY_THRESHOLD = (0.5,0.5,0.5)
 THRESHOLD = 1.8
 SCOPE = 25
 
@@ -39,18 +40,13 @@ def get_points(obj_id, grid):
     return points
 
 
-def check_traversal_order(test, grid, traversal_orders, sky_ids, image_pos):
-    road, _ = grid[30][60]
-    sidewalk, _ = grid[30][90]
-    wall, _ = grid[30][119]
-    observe = {road: "road", sidewalk: "sidewalk", wall: "wall"}
+def check_traversal_order(test, grid, traversal_orders, sky_ids, image_pos, debug=True):
     for (obj_id, traversal_order) in traversal_orders:
-        #if obj_id not in observe:
-        #    continue
         if obj_id in sky_ids or traversal_order is None or len(traversal_order) == 0:
             continue
         seen = {traversal_order[0][0]}
-        connected_components = {1: {traversal_order[0][0]}}
+        if debug:
+            connected_components = {1: {traversal_order[0][0]}} # used to visually display all connected components
         for (point_a, point_b) in traversal_order[1:]:
             if point_b not in seen:
                 test["success"] = False
@@ -61,42 +57,46 @@ def check_traversal_order(test, grid, traversal_orders, sky_ids, image_pos):
                 i_a, j_a, k_a = point_a
                 i_b, j_b, k_b = point_b
                 d = dist(grid[i_a][j_a][1][k_a][0], grid[i_b][j_b][1][k_b][0])
-                if d > THRESHOLD and dist(grid[i_a][j_a][1][k_a][0]) <= SCOPE and dist( grid[i_b][j_b][1][k_b][0]) <= SCOPE :
+                if d > THRESHOLD and (dist(grid[i_a][j_a][1][k_a][0]) <= SCOPE and dist(grid[i_b][j_b][1][k_b][0]) <= SCOPE) :
                     test["success"] = False
-                    #test["bad_points"].extend(image_pos[obj_id])
                     test["error_msg"] = f"Points {point_a} and {point_b} are {d} apart, which is too far away"
-                    connected_components[len(connected_components)+1] = {point_a}
-                    #break
-                else:
+                    if not debug:
+                        test["bad_points"].extend(image_pos[obj_id])
+                    else:
+                        connected_components[len(connected_components)+1] = {point_a}
+                    # we can optionally return here, since the test fails regardless
+                elif debug:
                     for comp in connected_components:
                         if point_b in connected_components[comp]:
                             connected_components[comp].add(point_a)
-        conn2 = {}
-        for con_comp in connected_components:
-            new_comp = set()
-            for i,j,k in connected_components[con_comp]:
-                if dist(grid[i][j][1][k][0]) <= SCOPE:
-                    new_comp.add((i,j,k))
-            if len(new_comp) > 0:
-                conn2[con_comp] = new_comp
-        #print(len(conn2), len(connected_components), min(dist(grid[i][j][1][k][0]) for indx in connected_components for i,j,k in connected_components[indx]))
-        connected_components = conn2
-        min_dist = float('inf')
-        if len(connected_components) > 1:
-            lengths = [(len(connected_components[x]), x) for x in connected_components]
-            max_num, max_indx = max(lengths, key= lambda x: x[0])
-            for i in connected_components:
-                if i != max_indx:
-                    for i,j,k in connected_components[i]:
-                        pt = grid[i][j][1][k][0]
-                        if dist(pt) < min_dist:
-                            min_dist = dist(pt)
-                        test["bad_points"].append(grid[i][j][1][k][2])
-                else:
-                    for i,j,k in connected_components[i]:
-                        test["good_points"].append(grid[i][j][1][k][2])
-        if obj_id in observe:
-            print("MIN_DIST: ", observe[obj_id], " ", min_dist)
+        if debug: 
+            min_dist = float('inf')
+            if len(connected_components) > 1:
+                lengths = [(len(connected_components[x]), x) for x in connected_components]
+                max_num, max_indx = max(lengths, key= lambda x: x[0])
+                rest_num = sum(len(connected_components[x]) for x in connected_components if x != max_indx )
+                print("Spatial Object Error. Right # of lidar pts: ", max_num, ". Wrong # of lidar pts: ", rest_num)
+                # TODO: remove rest_num conditional
+                if rest_num < 10:
+                    test["success"] = True
+                    return
+                for i in connected_components:
+                    if i != max_indx:
+                        for i,j,k in connected_components[i]:
+                            pt = grid[i][j][1][k][0]
+                            if dist(pt) < min_dist:
+                                min_dist = dist(pt)
+                            test["bad_points"].append(grid[i][j][1][k][2])
+                    else:
+                        for i,j,k in connected_components[i]:
+                            test["good_points"].append(grid[i][j][1][k][2])
+            
+            #road, _ = grid[30][60]
+            #sidewalk, _ = grid[30][90]
+            #wall, _ = grid[30][119]
+            #observe = {road: "road", sidewalk: "sidewalk", wall: "wall"}
+            #if obj_id in observe:
+            #    print("MIN_DIST: ", observe[obj_id], " ", min_dist)
             
                 # TODO: should add point_a and point_b to bad_points, but we need to add 2d x,y coords to do that
 
@@ -111,20 +111,20 @@ def avg_velocity(obj):
     return sum_v_x/len(obj), sum_v_y/len(obj), sum_v_z/len(obj)
 
 
-def check_same_velocity(test, obj_velocities, vel_threshold, image_pos):
+def check_same_velocity(test, obj_velocities, image_pos):
     for obj, vels in obj_velocities.items():
         if vels is None:
             continue
         avg_v_x, avg_v_y, avg_v_z = avg_velocity(vels)
         for point_vel in vels:
             v_x, v_y, v_z = point_vel
-            if abs(v_x - avg_v_x) > vel_threshold[0] or abs(v_y - avg_v_y) > vel_threshold[1] or abs(v_z - avg_v_z) > vel_threshold[2]:
+            if abs(v_x - avg_v_x) > VELOCITY_THRESHOLD[0] or abs(v_y - avg_v_y) > VELOCITY_THRESHOLD[1] or abs(v_z - avg_v_z) > VELOCITY_THRESHOLD[2]:
                 test["success"] = False
                 test["error_msg"] = f"The velocity {point_vel} is too different from the average velocity, which is {(avg_v_x, avg_v_y, avg_v_z)}"
                 test["bad_points"].extend(image_pos[obj])
 
 
-def check_density_spread_all_objs(test, image_pos, image, image_scale_factor):
+def check_density_spread_all_objs(test, grid, image_pos, image, image_scale_factor):
     from LiDAR.lidar_density_location import LIDAR_GRID
 
     density = [[set() for i in range(image.shape[1])] for j in range(image.shape[0])]
@@ -134,7 +134,8 @@ def check_density_spread_all_objs(test, image_pos, image, image_scale_factor):
     
     for i in range(len(LIDAR_GRID)):
         for j in range(len(LIDAR_GRID[i])):
-            if LIDAR_GRID[i][j] == 1 and image[i][j] not in density[i][j]:
+            #if LIDAR_GRID[i][j] == 1 and image[i][j] not in density[i][j]:
+            if LIDAR_GRID[i][j] == 1 and len(grid[i][j][1]) == 0:
                 test["success"] = False
                 # TODO: error msg
                 test["bad_points"].append([i*image_scale_factor + image_scale_factor//2, j*image_scale_factor + image_scale_factor//2])
@@ -248,7 +249,8 @@ def check_predicates(test, grid, vels, ego_vel, ground_ids, image_pos):
     """
     For now assuming a straight path but eventually we can incorporate curved or more complex paths
     """
-    point_in_path = lambda x: (-5 < x[1] < 5) and x[0] > 0 and x[2] > -1.2
+    lane_width = 3.7 # meters
+    point_in_path = lambda x: (-lane_width/2 < x[1] < lane_width/2) and x[0] > 0 and x[2] > -1.2
     obj_in_path = lambda x: any(point_in_path(p[0]) for p in get_points(x, grid))
     obj_ids = {cell[0] for row in grid for cell in row}
     object_ids_in_path = list(filter(obj_in_path, obj_ids))
@@ -263,7 +265,7 @@ def check_predicates(test, grid, vels, ego_vel, ground_ids, image_pos):
             test["bad_points"].extend(image_pos[obj_id])
 
 
-def interlock(grid, ground_ids, sky_ids, traversal_orders, image, vel_threshold, image_scale_factor, ego_vel):
+def interlock(grid, ground_ids, sky_ids, traversal_orders, image, image_scale_factor, ego_vel):
     """
     grid: 2d array of cells where each value is a tuple of the form (obj_id, lidar_points)
         where obj_id is the unique id corresponding to the object in that cell
@@ -280,9 +282,6 @@ def interlock(grid, ground_ids, sky_ids, traversal_orders, image, vel_threshold,
             where point_a is the next point in the traversal order
             and point_b is the point close to point_a
     point: tuple (i, j, k) are the indices such that grid[j][i][1][k] gives the point
-
-    vel_threshold: maximum difference in velocity a point can have
-            from the average velocity of that object for it to be "the same"
 
     image_scale_factor: the scale at which the resolution of the image is decreased
 
@@ -337,13 +336,13 @@ def interlock(grid, ground_ids, sky_ids, traversal_orders, image, vel_threshold,
             "bad_points": []
         },
         "Velocity Check": {
-            "function": lambda test: check_same_velocity(test, vels, vel_threshold, image_pos),
+            "function": lambda test: check_same_velocity(test, vels, image_pos),
             "success": True,
             "error_msg": "",
             "bad_points": []
         },
         "Density Check": {
-            "function": lambda test: check_density_spread_all_objs(test, image_pos, image, image_scale_factor),
+            "function": lambda test: check_density_spread_all_objs(test, grid, image_pos, image, image_scale_factor),
             "success": True,
             "error_msg": "",
             "bad_points": []
@@ -361,13 +360,13 @@ def interlock(grid, ground_ids, sky_ids, traversal_orders, image, vel_threshold,
             "bad_points": []
         },
     }
-    for check in test_suite:
-        test = test_suite[check]
-        test["good_points"] = []
-        test["function"](test)
     #test_suite.pop("Collision Check")
     #test_suite.pop("Velocity Check")
     #test_suite.pop("Density Check")
     #test_suite.pop("Ground Check")
     #test_suite.pop("Spatial Check")
+    for check in test_suite:
+        test = test_suite[check]
+        test["good_points"] = []
+        test["function"](test)
     return test_suite
