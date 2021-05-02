@@ -76,7 +76,7 @@ def check_traversal_order(test, grid, traversal_orders, sky_ids, image_pos, debu
                 max_num, max_indx = max(lengths, key= lambda x: x[0])
                 rest_num = sum(len(connected_components[x]) for x in connected_components if x != max_indx )
                 print("Spatial Object Error. Right # of lidar pts: ", max_num, ". Wrong # of lidar pts: ", rest_num)
-                # TODO: remove rest_num conditional
+                # LiDAR may be slightly noisy. This allows some lidar points to be wrong while still not failing the test.
                 if rest_num < 10:
                     test["success"] = True
                     return
