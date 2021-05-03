@@ -4,15 +4,20 @@ import open3d as o3d
 from collections import defaultdict
 import math
 
+import datetime
 
 MAX_DECEL = -4.5 # m/s^2
 MIN_DIST = 5 # m
-
+LANE_WIDTH = 3.5 # m
 imag_threshold = 1e-5 # cutoff for imaginary/real roots
 
 VELOCITY_THRESHOLD = (0.5,0.5,0.5)
 THRESHOLD = 1.8
 SCOPE = 25
+
+
+POINT_IN_PATH = lambda x: (-LANE_WIDTH/2 < x[1] < LANE_WIDTH/2) and x[0] > 0 and x[2] > -1.2 and x[0] < SCOPE
+POINT_COORD = lambda p, grid: grid[p[0]][p[1]][1][p[2]][0]
 
 def add(vec1, vec2):
     return (vec1[0] + vec2[0], vec1[1] + vec2[1], vec1[2] + vec2[2])
@@ -40,7 +45,53 @@ def get_points(obj_id, grid):
     return points
 
 
-def check_traversal_order(test, grid, traversal_orders, sky_ids, image_pos, debug=True):
+def check_traversal_order(test, grid, traversal_orders, sky_ids, image_pos, debug=False):
+    for (obj_id, traversal_order) in traversal_orders:
+        if obj_id in sky_ids or traversal_order is None or len(traversal_order) == 0:
+            continue
+        
+        first_elem = traversal_order[0][0]
+        seen = {first_elem: 1}
+        connected_components = {1: {first_elem}}
+        connected_components_size = {1: 1 if POINT_IN_PATH(POINT_COORD(first_elem, grid)) else 0}
+        for (point_a, point_b) in traversal_order[1:]:
+            if point_b not in seen:
+                test["success"] = False
+                test["error_msg"] = f"The traversal order is not valid, because we have not yet seen the point {point_b}"
+                return
+            else:
+                d = dist(POINT_COORD(point_a, grid), POINT_COORD(point_b, grid))
+                in_path = 1 if POINT_IN_PATH(POINT_COORD(point_a, grid)) else 0
+                component = None
+                if d > THRESHOLD:
+                    component = len(connected_components)+1
+                    connected_components[component] = {point_a}
+                    connected_components_size[component] = in_path
+                else:
+                    component = seen[point_b]
+                    connected_components[component].add(point_a)
+                    connected_components_size[component] += in_path
+                seen[point_a] = component
+
+        if sum(connected_components_size[x] > 0 for x in connected_components_size) > 1:
+            lengths = [(connected_components_size[x], x) for x in connected_components_size]
+            max_num, max_indx = max(lengths, key= lambda x: x[0])
+            rest_num = sum(connected_components_size[x] for x in connected_components if x != max_indx)
+            print("Spatial Object Error. Right # of lidar pts: ", max_num, ". Wrong # of lidar pts: ", rest_num)
+            test["success"] = False
+            for indx in connected_components:
+                if indx != max_indx:
+                    for i,j,k in connected_components[indx]:
+                        pt = grid[i][j][1][k][0]
+                        if dist(pt) < min_dist:
+                            min_dist = dist(pt)
+                        test["bad_points"].append(grid[i][j][1][k][2])
+                else:
+                    for i,j,k in connected_components[indx]:
+                        test["good_points"].append(grid[i][j][1][k][2])
+"""
+# Old version -- doesn't restrict based on road FoV
+def check_traversal_order(test, grid, traversal_orders, sky_ids, image_pos, debug=False):
     for (obj_id, traversal_order) in traversal_orders:
         if obj_id in sky_ids or traversal_order is None or len(traversal_order) == 0:
             continue
@@ -99,7 +150,7 @@ def check_traversal_order(test, grid, traversal_orders, sky_ids, image_pos, debu
             #    print("MIN_DIST: ", observe[obj_id], " ", min_dist)
             
                 # TODO: should add point_a and point_b to bad_points, but we need to add 2d x,y coords to do that
-
+"""
 
 def avg_velocity(obj):
     sum_v_x, sum_v_y, sum_v_z = 0, 0, 0
@@ -249,9 +300,7 @@ def check_predicates(test, grid, vels, ego_vel, ground_ids, image_pos):
     """
     For now assuming a straight path but eventually we can incorporate curved or more complex paths
     """
-    lane_width = 3.7 # meters
-    point_in_path = lambda x: (-lane_width/2 < x[1] < lane_width/2) and x[0] > 0 and x[2] > -1.2
-    obj_in_path = lambda x: any(point_in_path(p[0]) for p in get_points(x, grid))
+    obj_in_path = lambda x: any(POINT_IN_PATH(p[0]) for p in get_points(x, grid))
     obj_ids = {cell[0] for row in grid for cell in row}
     object_ids_in_path = list(filter(obj_in_path, obj_ids))
     for obj_id in object_ids_in_path:
@@ -368,5 +417,7 @@ def interlock(grid, ground_ids, sky_ids, traversal_orders, image, image_scale_fa
     for check in test_suite:
         test = test_suite[check]
         test["good_points"] = []
+        time = datetime.datetime.now()
         test["function"](test)
+        print("Finished check ", check, ".  Time: ", (datetime.datetime.now()-time).total_seconds())
     return test_suite
