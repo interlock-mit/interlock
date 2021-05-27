@@ -1,6 +1,6 @@
 import carla
-from LiDAR.segmentation_monitor import interlock
-from LiDAR.v3_traversal import get_traversal_orders
+from Segmentation.segmentation_monitor import interlock
+from Segmentation.traversals import get_traversal_orders
 import math
 import numpy as np
 from collections import defaultdict
@@ -322,7 +322,7 @@ class Lidarcamera:
                     for dy in range(y-delta, y+delta+1):
                         rgb_image_copy[max(min(dx,rgb_image.shape[0]-1),0),max(min(dy,rgb_image.shape[1]-1),0)] = [255,255,255]
         pic =  np.vstack((rgb_image_copy, rgb_image))
-        Image.fromarray(pic).save(f"lidar/pic_{self.frame}.png")
+        Image.fromarray(pic).save(f"Segmentation/pic_{self.frame}.png")
 
     def main(self, case):
         try:

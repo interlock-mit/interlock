@@ -1,3 +1,13 @@
+"""
+
+A more efficient approach to object traversals, where we hash LiDAR points into 3-dimensional boxes 
+where any two points inside the box are cell_size distance apart. This is a faster approach because
+we know that all points within a single box can be paired together in any order.
+
+Currently unused because it has some bugs -- it doesn't catch all the points within an object.
+
+"""
+
 cell_size = .5
 
 def get_traversal_order(points):

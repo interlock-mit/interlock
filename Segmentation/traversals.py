@@ -1,4 +1,4 @@
-from LiDAR.segmentation_monitor import THRESHOLD
+from Segmentation.segmentation_monitor import THRESHOLD
 from collections import defaultdict
 
 def distance_squared(grid, pointA, pointB):
@@ -13,7 +13,14 @@ def hash_coords(grid, point):
     (x,y,z), velocity, rgb_coord = grid[i][j][1][k]
     return (int(x), int(y), int(z))
 
+"""
+Naively generates a traversal order order:
 
+1. Hashes all LiDAR points according to their 3D coordinates.
+2. For a LiDAR point, look at all hashed 3D coordinates around it that are THRESHOLD distance apart
+3. Pair the LiDAR point up with all nearby points.
+4. Remove that LiDAR point and all nearby ones from our search, and start over at step 2 until no LiDAR points remain.
+"""
 def get_traversal_orders(grid):
     hashed_coords = {}
     objects_left = {}
