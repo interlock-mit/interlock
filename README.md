@@ -22,3 +22,11 @@ The controller generates a certificate containing a proposed pair of lane lines 
 The monitor checks that:
 1. The lane lines from the polynomials are adequately spaced apart and parallel
 2. The polynomials match closely with the image (using the transformation matrix to get the corresponding points in the camera view and the color filtering thresholds for processing the image)
+
+### Segmentation
+The controller generates a certificate to validate its segmentation. We implement the following checks for the segmentation certificate:
+
+1. Density: there must be a sufficient coverage of the LiDAR field of view
+2. Contiguity: LiDAR points making up a classified object must have similar velocity and must be close enough to one another
+3. Ground Plane: LiDAR points making up a ground plane must be of a sufficient height
+4. Collision Freedom: no object can pose an immediate collision risk
