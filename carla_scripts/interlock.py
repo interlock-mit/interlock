@@ -1,12 +1,8 @@
 import carla
-import random
-from carla_scripts.carla_painter import CarlaPainter
-from LiDAR.process_points import interlock
+from LiDAR.segmentation_monitor import interlock
+from LiDAR.v3_traversal import get_traversal_orders
 import math
 import numpy as np
-import open3d as o3d
-import datetime
-from LiDAR.segmentation_pipeline import pipeline
 from collections import defaultdict
 
 from queue import Queue
@@ -15,10 +11,7 @@ from matplotlib import cm
 from PIL import Image
 import cv2
 import datetime
-import pickle
 from skimage.measure import label as label_objects
-from scipy import stats
-import matplotlib.pyplot as plt
 from statistics import mode
 
 VIRIDIS = np.array(cm.get_cmap('viridis').colors)
@@ -61,60 +54,25 @@ DOWNSAMPLE_FACTOR = 10
 class Lidarcamera:
     def __init__(self):
         self.world = None
+        self.client = None
+        self.tm = None
+
+        self.vehicles = []
         self.ego_vehicle = None
         self.lidar = None
         self.camera = None
         self.blueprint_camera = None
         self.image_camera = None
-        self.obstacle = None
-        self.client = None
-        self.scanned_angle = 0
-        self.point_idx = 0
-        self.print_once = False
         self.blueprint_lidar = None
-        self.lidar_certificate = None
-        self.certificate_result = True
 
-        # new
-        self.tm = None
-        self.vehicles = []
-        self.closest_point = float('inf')
+        self.certificate_result = True
         self.count = 0
+    
         self.image_queue = Queue()
         self.lidar_queue = Queue()
         self.camera_segmentation_queue = Queue()
         self.frame = 0
         self.camera_segmentation = None
-
-        # degrees
-        self.certificate_angular_bounds = {"up": 5,
-                "down": -4,
-                "left": -7,
-                "right": 7}
-        # meters
-        self.certificate_distance = 20
-        # in coordinates relative to lidar origin
-        self.lane_bounds = {'left': -1, 'right': 1, 'down':-1.5, 'up':1.5}
-        self.diffs = {"rl": 0.1, "ud": 0.5, "row_dev": 0.1}
-        self.row_heights = []
-
-    def d_to_rad(self, deg):
-        return deg*np.pi/180.0
-
-    def display_points(self, pts, origin):
-        disp_pts = pts.copy()
-        disp_pts[:,0] += origin.x
-        disp_pts[:,1] += origin.y
-        disp_pts[:,2] += origin.z
-        #translate = disp_pts + 0.05
-        #out = np.stack((disp_pts, translate), axis=1).tolist()
-        self.painter.draw_points(disp_pts.tolist())
-   
-    def angle(self, pt, origin=0):
-        if isinstance(pt, carla.Vector3D):
-            return math.atan2(pt.y, pt.x)
-        else:
-            return math.atan2(pt[1], pt[0])
 
     def camera_listener(self, data):
         im_array = np.copy(np.frombuffer(data.raw_data, dtype=np.dtype("uint8")))
@@ -222,7 +180,7 @@ class Lidarcamera:
                 velocities[i] = [0,0,0]
         return velocities
 
-    def image_to_grid(self, lidar_cloud, segmented_image, factor):
+    def image_to_grid(self, lidar_cloud, segmented_image, factor, search_near=False):
 
         def label_image(image):
             # label roadline and road as same object
@@ -246,14 +204,15 @@ class Lidarcamera:
             # some lidar points are projected onto an incorrect object (due to rounding/resolution issues)
             if segmented_tag_truth != segmented_tag_projection:
                 object_id = None
-                min_dist = float('inf')
-                # if we can find the object nearby, assign the lidar point to the closest object. if not, skip the lidar point
-                for s_x in range(max(0, x - 2*DOWNSAMPLE_FACTOR), min(x + 2*DOWNSAMPLE_FACTOR + 1, segmented_image.shape[0])):
-                    for s_y in range(max(0, y - 2*DOWNSAMPLE_FACTOR), min(y + 2*DOWNSAMPLE_FACTOR + 1, segmented_image.shape[1])):
-                        dist = (x-s_x)**2 + (y-s_y)**2
-                        if segmented_image[s_x, s_y] == segmented_tag_truth and dist < min_dist:
-                            min_dist = dist
-                            object_id = labeled_image[s_x, s_y]
+                if search_near:
+                    # if we can find the object nearby, assign the lidar point to the closest object. if not, skip the lidar point
+                    min_dist = float('inf')
+                    for s_x in range(max(0, x - 2*DOWNSAMPLE_FACTOR), min(x + 2*DOWNSAMPLE_FACTOR + 1, segmented_image.shape[0])):
+                        for s_y in range(max(0, y - 2*DOWNSAMPLE_FACTOR), min(y + 2*DOWNSAMPLE_FACTOR + 1, segmented_image.shape[1])):
+                            dist = (x-s_x)**2 + (y-s_y)**2
+                            if segmented_image[s_x, s_y] == segmented_tag_truth and dist < min_dist:
+                                min_dist = dist
+                                object_id = labeled_image[s_x, s_y]
                 if object_id is None:
                     #print((x,y), "Lidar Truth: ", TAG_ID[segmented_tag_truth], "Predicted: ",TAG_ID[segmented_tag_projection])
                     continue
@@ -301,98 +260,72 @@ class Lidarcamera:
             print("Warning: Sensor data missed")
             return
 
-        a = datetime.datetime.now()
         grid, labeled_image, object_id_to_tag = self.image_to_grid(lidar_cloud, segmentation_image, DOWNSAMPLE_FACTOR)
-        #print("created grid: ", (datetime.datetime.now()-a).total_seconds())
 
         ground_ids = [object_id for object_id in object_id_to_tag if object_id_to_tag[object_id] == TAG["road"]]
         sky_ids = [object_id for object_id in object_id_to_tag if object_id_to_tag[object_id] == TAG["sky"]]
         ego_vel = self.ego_vehicle.get_velocity()
-        result = pipeline(grid, labeled_image, DOWNSAMPLE_FACTOR, [ego_vel.x, ego_vel.y, ego_vel.z], ground_ids, sky_ids)
+        traversal_orders = get_traversal_orders(grid)
+        result = interlock(grid, ground_ids, sky_ids, traversal_orders, labeled_image, DOWNSAMPLE_FACTOR, [ego_vel.x, ego_vel.y, ego_vel.z])
         self.count += 1
 
         # saving frame to debug..
         if self.count % SAVE_RATE == 0 and RECORD:
-            check_img = np.zeros(rgb_image.shape, dtype=np.uint8)
-            id_to_color = {}
-            delta = 1
-            rgb_image_copy = np.copy(rgb_image)
-            segmented_image_copy = np.copy(segmentation_image)
-            text_X = 10
-            text_Y = 30
-            colors = {
-                "Spatial Check": [255,0,0],
-                "Velocity Check": [0,0,255],
-                "Density Check": [128,0,128],
-                "Ground Check": [255,165,0],
-                "Collision Check": [0,0,0]
-            }
-            bad_squares = set()
-            self.certificate_result = True
-            for test in result:
-                if result[test]["success"]:
-                    color = [0,255,0]
-                else:
-                    color = colors[test]
-                    if test == "Collision Check":
-                        self.certificate_result = False
-                cv2.putText(rgb_image_copy, test, (text_X,text_Y), cv2.FONT_HERSHEY_SIMPLEX, 1, color, 2)
-                text_Y += 30
-                for pt in result[test]["bad_points"]:
-                    x,y = pt
-                    for dx in range(x-delta, x+delta+1):
-                        for dy in range(y-delta, y+delta+1):
-                            rgb_image_copy[max(min(dx,rgb_image.shape[0]-1),0),max(min(dy,rgb_image.shape[1]-1),0)] = color
-                            bad_squares.add((dx//DOWNSAMPLE_FACTOR, dy//DOWNSAMPLE_FACTOR))
-                for pt in result[test]["good_points"]:
-                    x,y = pt
-                    for dx in range(x-delta, x+delta+1):
-                        for dy in range(y-delta, y+delta+1):
-                            rgb_image_copy[max(min(dx,rgb_image.shape[0]-1),0),max(min(dy,rgb_image.shape[1]-1),0)] = [0,0,255]
-                            bad_squares.add((dx//DOWNSAMPLE_FACTOR, dy//DOWNSAMPLE_FACTOR))
-            for j in range(len(grid)):
-                for i in range(len(grid[j])):
-                    cell = grid[j][i]
-                    if len(cell[1]) == 0 or (j,i) in bad_squares:
-                        continue
-                    label, lidar_pt = cell
-                    x = j * DOWNSAMPLE_FACTOR + DOWNSAMPLE_FACTOR//2
-                    y = i * DOWNSAMPLE_FACTOR + DOWNSAMPLE_FACTOR//2
-                    if label not in id_to_color:
-                        id_to_color[label] = list(np.random.random(size=3) * 256)
-                    for dx in range(x-delta, x+delta+1):
-                        for dy in range(y-delta, y+delta+1):
-                            rgb_image_copy[max(min(dx,rgb_image.shape[0]-1),0),max(min(dy,rgb_image.shape[1]-1),0)] = [255,255,255]
-            pic =  np.vstack((rgb_image_copy, rgb_image))
-            Image.fromarray(pic).save(f"lidar/pic_{self.frame}.png")
-
-    def spawn_obstacle(self, index=0, dist=15):
-        if self.obstacle is not None:
-            self.obstacle.destroy()
-
-        bp = self.world.get_blueprint_library().filter("vehicle.*")[index]
-        forward_vec = self.ego_vehicle.get_transform().get_forward_vector()
-        mag = math.sqrt(forward_vec.x**2 + forward_vec.y**2)
-        dx = dist*forward_vec.x/mag
-        dy = dist*forward_vec.y/mag
-
-        s = self.ego_vehicle.get_transform()
-        s.location.z += 2.0
-        s.location.x += dx
-        s.location.y += dy
-        s.rotation.roll = 0.0
-        s.rotation.pitch = 0.0
-        return self.world.try_spawn_actor(bp, s)
+            self.save_image(rgb_image, result, grid)
+    
+    def save_image(self, rgb_image, result, grid):
+        id_to_color = {}
+        delta = 1
+        rgb_image_copy = np.copy(rgb_image)
+        text_X = 10
+        text_Y = 30
+        colors = {
+            "Spatial Check": [255,0,0],
+            "Velocity Check": [0,0,255],
+            "Density Check": [128,0,128],
+            "Ground Check": [255,165,0],
+            "Collision Check": [0,0,0]
+        }
+        bad_squares = set()
+        for test in result:
+            if result[test]["success"]:
+                color = [0,255,0]
+            else:
+                color = colors[test]
+                if test == "Collision Check":
+                    self.certificate_result = False
+            cv2.putText(rgb_image_copy, test, (text_X,text_Y), cv2.FONT_HERSHEY_SIMPLEX, 1, color, 2)
+            text_Y += 30
+            for pt in result[test]["bad_points"]:
+                x,y = pt
+                for dx in range(x-delta, x+delta+1):
+                    for dy in range(y-delta, y+delta+1):
+                        rgb_image_copy[max(min(dx,rgb_image.shape[0]-1),0),max(min(dy,rgb_image.shape[1]-1),0)] = color
+                        bad_squares.add((dx//DOWNSAMPLE_FACTOR, dy//DOWNSAMPLE_FACTOR))
+            for pt in result[test]["good_points"]:
+                x,y = pt
+                for dx in range(x-delta, x+delta+1):
+                    for dy in range(y-delta, y+delta+1):
+                        rgb_image_copy[max(min(dx,rgb_image.shape[0]-1),0),max(min(dy,rgb_image.shape[1]-1),0)] = [0,0,255]
+                        bad_squares.add((dx//DOWNSAMPLE_FACTOR, dy//DOWNSAMPLE_FACTOR))
+        for j in range(len(grid)):
+            for i in range(len(grid[j])):
+                cell = grid[j][i]
+                if len(cell[1]) == 0 or (j,i) in bad_squares:
+                    continue
+                label, lidar_pt = cell
+                x = j * DOWNSAMPLE_FACTOR + DOWNSAMPLE_FACTOR//2
+                y = i * DOWNSAMPLE_FACTOR + DOWNSAMPLE_FACTOR//2
+                if label not in id_to_color:
+                    id_to_color[label] = list(np.random.random(size=3) * 256)
+                for dx in range(x-delta, x+delta+1):
+                    for dy in range(y-delta, y+delta+1):
+                        rgb_image_copy[max(min(dx,rgb_image.shape[0]-1),0),max(min(dy,rgb_image.shape[1]-1),0)] = [255,255,255]
+        pic =  np.vstack((rgb_image_copy, rgb_image))
+        Image.fromarray(pic).save(f"lidar/pic_{self.frame}.png")
 
     def main(self, case):
         try:
-            # initialize one painter for CarlaViz connection
-            try:
-                self.painter = CarlaPainter('localhost', 8089)
-            except Exception as e:
-                print("NO PAINTER")
-                self.painter = None
-
             # connect to Carla engine
             self.client = carla.Client('localhost', 2000)
             self.client.set_timeout(10.0)
@@ -452,36 +385,13 @@ class Lidarcamera:
             # tick to generate these actors in the game world
             self.world.tick()
 
-            #self.obstacle = self.spawn_obstacle()
-
+            self.certificate_result = True
             while (True):
                 self.frame += 1
                 self.world.tick()
                 self.sensor_processor()
-                strs = []
-                locs = []
-
-                loc = self.ego_vehicle.get_location()
-                strs.append("{:.2f}, ".format(loc.x) + "{:.2f}".format(loc.y) \
-                        + ", {:.2f}".format(loc.z))
-                locs.append([loc.x, loc.y, loc.z + 10.0])
-
-                # strs.append( "{:.2f}, ".format(loc.x-self.certificate_distance) + "{:.2f}".format(loc.y) \
-                #         + ", {:.2f}".format(loc.z))
-                strs.append('closest point: '+ str(self.closest_point)[:4])
-
-                locs.append([loc.x-self.certificate_distance, loc.y, loc.z + 10.0])
-
-                strs.append("Certificate GOOD" if self.certificate_result else "Certificate BAD")
                 if not self.certificate_result:
-                    # print('brake')
-                    # vehicle_actors = [self.world.get_actor(x.actor_id) for x in self.vehicles]
-
-                    # print([v.get_velocity().x for v in vehicle_actors])
                     self.world.get_actor(self.ego_id).apply_control(carla.VehicleControl(brake=1.0))
-                locs.append([loc.x-5, loc.y-5, loc.z + 20.0])
-                self.painter.draw_texts(strs, locs, size=20)
-
         finally:
             if previous_settings is not None:
                 self.world.apply_settings(previous_settings)
@@ -496,8 +406,6 @@ class Lidarcamera:
                 self.camera_segmentation.destroy()
             if self.ego_vehicle is not None:
                 self.ego_vehicle.destroy()
-            if self.obstacle is not None:
-                self.obstacle.destroy()
             self.client.apply_batch([carla.command.DestroyActor(x.actor_id) for x in self.vehicles])
 
 def egoAndCarDrivingAutoPilot(tm_port, apply_batch, world):
@@ -572,7 +480,7 @@ def otherLane(tm_port, apply_batch, world):
 
     return results
 
-def egoAndCarAtIntersection(tm_port, apply_batch, world):
+def egoAndCarAtIntersectionNoCrash(tm_port, apply_batch, world):
     ego_transform = carla.Transform(carla.Location(x=210.07566833496, y=9.7075996, z=0.17530714869499207))
     vehicle_2_transform = carla.Transform(carla.Location(x=217.07566833496, y=9.7075996, z=0.17530714869499207))
     crossing_vehicle = carla.Transform(carla.Location(x=231.57566833496, y=0.7075996, z=0.17530714869499207), carla.Rotation(pitch=0, yaw=90, roll=0))
@@ -590,6 +498,34 @@ def egoAndCarAtIntersection(tm_port, apply_batch, world):
     results = apply_batch(batch, True)
     return results
 
+def egoAndCarAtIntersectionCrash(tm_port, apply_batch, world):
+    ego_transform = carla.Transform(carla.Location(x=217.07566833496, y=9.7075996, z=0.17530714869499207))
+    vehicle_2_transform = carla.Transform(carla.Location(x=241.07566833496, y=9.7075996, z=0.17530714869499207), carla.Rotation(pitch=0, yaw=180, roll=0))
+    crossing_vehicle = carla.Transform(carla.Location(x=235.07566833496, y=-3.075996, z=0.17530714869499207), carla.Rotation(pitch=0, yaw=90, roll=0))
+
+    blueprints_vehicles = world.get_blueprint_library().filter("vehicle.*")
+    blueprints_vehicles = [x for x in blueprints_vehicles if int(x.get_attribute('number_of_wheels')) == 4]
+    # set ego vehicle's role name to let CarlaViz know this vehicle is the ego vehicle
+    blueprints_vehicles[0].set_attribute('role_name', 'ego') # or set to 'hero'
+    blueprints_vehicles[1].set_attribute('color', '255,0,0')
+    blueprints_vehicles[2].set_attribute('color', '255,0,0')
+
+    actor1 = carla.command.SpawnActor(blueprints_vehicles[0], ego_transform)
+    actor2 = carla.command.SpawnActor(blueprints_vehicles[1], vehicle_2_transform)
+    actor3 = carla.command.SpawnActor(blueprints_vehicles[1], crossing_vehicle)
+    batch = [actor1, actor2, actor3]
+    
+    results = apply_batch(batch, True)
+    world.get_actor(results[0].actor_id).set_target_velocity(carla.Vector3D(0,0,0))
+    world.get_actor(results[1].actor_id).set_target_velocity(carla.Vector3D(-5,0,0))
+    world.get_actor(results[2].actor_id).set_target_velocity(carla.Vector3D(0,5,0))
+    weather = carla.WeatherParameters(
+    cloudiness=80.0,
+    precipitation=0.0,
+    sun_altitude_angle=70.0)
+    world.set_weather(weather)
+    return results
+
 if __name__ == "__main__":
     lidarcamera = Lidarcamera()
-    lidarcamera.main(egoCrashingIntoStationaryCar)
+    lidarcamera.main(egoAndCarAtIntersectionCrash)
